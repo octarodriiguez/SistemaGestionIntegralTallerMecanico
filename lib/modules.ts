@@ -1,0 +1,53 @@
+import {
+  BellRing,
+  ClipboardList,
+  FileText,
+  HandCoins,
+  LayoutGrid,
+  Users,
+} from "lucide-react";
+
+export const appModules = [
+  {
+    key: "dashboard",
+    href: "/dashboard",
+    title: "Dashboard",
+    description: "Resumen general del taller, alertas y estado operativo.",
+    icon: LayoutGrid,
+  },
+  {
+    key: "clientes",
+    href: "/clientes",
+    title: "Clientes y Vehiculos",
+    description: "Alta, consulta e historial por cliente y dominio.",
+    icon: Users,
+  },
+  {
+    key: "tramites",
+    href: "/tramites",
+    title: "Tramites",
+    description: "Gestion de oblea, prueba hidraulica y conversiones.",
+    icon: ClipboardList,
+  },
+  {
+    key: "alertas",
+    href: "/alertas",
+    title: "Alertas",
+    description: "Seguimiento de vencimientos y recordatorios mensuales.",
+    icon: BellRing,
+  },
+  {
+    key: "distribuidoras",
+    href: "/distribuidoras",
+    title: "Distribuidoras",
+    description: "Cuenta corriente, compras, pagos y saldos pendientes.",
+    icon: HandCoins,
+  },
+  {
+    key: "comprobantes",
+    href: "/comprobantes",
+    title: "Comprobantes",
+    description: "Recibos, presupuestos y garantias en formato PDF.",
+    icon: FileText,
+  },
+] as const;

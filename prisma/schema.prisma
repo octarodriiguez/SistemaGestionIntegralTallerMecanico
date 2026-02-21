@@ -1,0 +1,330 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+
+// ============================================
+// USUARIOS Y AUTENTICACIÓN
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String    @map("password_hash")
+  role          UserRole  @default(ADMIN)
+  
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+}
+
+// ============================================
+// CLIENTES Y VEHÍCULOS
+// ============================================
+
+model Client {
+  id          String    @id @default(cuid())
+  firstName   String    @map("first_name")
+  lastName    String    @map("last_name")
+  phone       String
+  email       String?
+  address     String?
+  notes       String?   @db.Text
+  
+  // Relaciones
+  vehicles    Vehicle[]
+  receipts    Receipt[]
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([phone])
+  @@index([lastName])
+  @@map("clients")
+}
+
+model Vehicle {
+  id          String    @id @default(cuid())
+  clientId    String    @map("client_id")
+  brand       String
+  model       String
+  year        Int?
+  domain      String    @unique
+  color       String?
+  notes       String?   @db.Text
+  
+  // Relaciones
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  procedures  Procedure[]
+  receipts    Receipt[]
+  alerts      ProcedureAlert[]
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([domain])
+  @@map("vehicles")
+}
+
+// ============================================
+// TRÁMITES Y PROCEDIMIENTOS
+// ============================================
+
+model ProcedureType {
+  id           String      @id @default(cuid())
+  name         ProcedureName @unique
+  displayName  String      @map("display_name")
+  currentPrice Decimal     @map("current_price") @db.Decimal(10, 2)
+  description  String?     @db.Text
+  
+  // Relaciones
+  procedures   Procedure[]
+  priceHistory PriceHistory[]
+  
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  @@map("procedure_types")
+}
+
+enum ProcedureName {
+  OBLEA
+  PRUEBA_HIDRAULICA
+  CONVERSION
+  MODIFICACION
+  DESMONTAJE
+}
+
+model Procedure {
+  id              String        @id @default(cuid())
+  vehicleId       String        @map("vehicle_id")
+  procedureTypeId String        @map("procedure_type_id")
+  distributorId   String?       @map("distributor_id")
+  
+  price           Decimal       @db.Decimal(10, 2)
+  paid            Boolean       @default(false)
+  paymentMethod   PaymentMethod? @map("payment_method")
+  paymentDate     DateTime?     @map("payment_date")
+  
+  procedureDate   DateTime      @default(now()) @map("procedure_date")
+  expirationDate  DateTime?     @map("expiration_date") // Para obleas
+  
+  notes           String?       @db.Text
+  
+  // Relaciones
+  vehicle         Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  procedureType   ProcedureType @relation(fields: [procedureTypeId], references: [id])
+  distributor     Distributor?  @relation(fields: [distributorId], references: [id])
+  receipts        Receipt[]
+  alerts          ProcedureAlert[]
+  
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([vehicleId])
+  @@index([procedureTypeId])
+  @@index([distributorId])
+  @@index([expirationDate])
+  @@map("procedures")
+}
+
+// ============================================
+// DISTRIBUIDORAS Y CUENTA CORRIENTE
+// ============================================
+
+model Distributor {
+  id           String                  @id @default(cuid())
+  name         String                  @unique
+  contact      String?
+  phone        String?
+  email        String?
+  address      String?
+  notes        String?                 @db.Text
+  
+  // Relaciones
+  procedures   Procedure[]
+  transactions DistributorTransaction[]
+  
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+
+  @@map("distributors")
+}
+
+model DistributorTransaction {
+  id              String          @id @default(cuid())
+  distributorId   String          @map("distributor_id")
+  type            TransactionType
+  description     String
+  amount          Decimal         @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod?  @map("payment_method")
+  
+  transactionDate DateTime        @default(now()) @map("transaction_date")
+  
+  // Datos adicionales para compras
+  quantity        Int?
+  unitPrice       Decimal?        @map("unit_price") @db.Decimal(10, 2)
+  
+  notes           String?         @db.Text
+  
+  // Relaciones
+  distributor     Distributor     @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@index([distributorId])
+  @@index([transactionDate])
+  @@map("distributor_transactions")
+}
+
+enum TransactionType {
+  PURCHASE  // Compra de insumos
+  PAYMENT   // Pago a distribuidora
+}
+
+enum PaymentMethod {
+  CASH      // Efectivo
+  TRANSFER  // Transferencia
+}
+
+// ============================================
+// COMPROBANTES
+// ============================================
+
+model Receipt {
+  id            String      @id @default(cuid())
+  receiptType   ReceiptType @map("receipt_type")
+  receiptNumber String      @unique @map("receipt_number")
+  
+  clientId      String      @map("client_id")
+  vehicleId     String?     @map("vehicle_id")
+  procedureId   String?     @map("procedure_id")
+  
+  amount        Decimal?    @db.Decimal(10, 2)
+  description   String      @db.Text
+  
+  issueDate     DateTime    @default(now()) @map("issue_date")
+  validUntil    DateTime?   @map("valid_until") // Para presupuestos
+  
+  pdfUrl        String?     @map("pdf_url")
+  
+  // Relaciones
+  client        Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vehicle       Vehicle?    @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  procedure     Procedure?  @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([vehicleId])
+  @@index([procedureId])
+  @@index([receiptType])
+  @@index([issueDate])
+  @@map("receipts")
+}
+
+enum ReceiptType {
+  RECEIPT   // Recibo
+  BUDGET    // Presupuesto
+  WARRANTY  // Garantía
+}
+
+// ============================================
+// HISTORIAL DE PRECIOS
+// ============================================
+
+model PriceHistory {
+  id              String        @id @default(cuid())
+  procedureTypeId String        @map("procedure_type_id")
+  price           Decimal       @db.Decimal(10, 2)
+  
+  validFrom       DateTime      @default(now()) @map("valid_from")
+  validTo         DateTime?     @map("valid_to")
+  
+  reason          String?       @db.Text // Motivo del cambio de precio
+  
+  // Relaciones
+  procedureType   ProcedureType @relation(fields: [procedureTypeId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  @@index([procedureTypeId])
+  @@index([validFrom])
+  @@map("price_history")
+}
+
+// ============================================
+// SISTEMA DE ALERTAS
+// ============================================
+
+model ProcedureAlert {
+  id             String      @id @default(cuid())
+  vehicleId      String      @map("vehicle_id")
+  procedureId    String      @map("procedure_id")
+  
+  alertDate      DateTime    @default(now()) @map("alert_date")
+  expirationDate DateTime    @map("expiration_date")
+  
+  status         AlertStatus @default(PENDING)
+  notifiedAt     DateTime?   @map("notified_at")
+  completedAt    DateTime?   @map("completed_at")
+  
+  // Datos de scraping de ENARGAS (JSON)
+  scrapedData    Json?       @map("scraped_data")
+  lastScrapedAt  DateTime?   @map("last_scraped_at")
+  
+  notes          String?     @db.Text
+  
+  // Relaciones
+  vehicle        Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  procedure      Procedure   @relation(fields: [procedureId], references: [id], onDelete: Cascade)
+  
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  @@index([vehicleId])
+  @@index([procedureId])
+  @@index([status])
+  @@index([expirationDate])
+  @@map("procedure_alerts")
+}
+
+enum AlertStatus {
+  PENDING    // Pendiente de notificar
+  NOTIFIED   // Cliente notificado
+  COMPLETED  // Trámite renovado
+}
+
+// ============================================
+// CONFIGURACIÓN DEL SISTEMA
+// ============================================
+
+model SystemConfig {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_config")
+}
