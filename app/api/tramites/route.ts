@@ -52,12 +52,14 @@ export async function GET(request: Request) {
       );
     }
 
+    const fullSelect =
+      "id, created_at, paid, total_amount, amount_paid, notes, clients(id, first_name, last_name, phone), procedure_types(id, display_name), distributors(id, name)";
+    const fallbackSelect =
+      "id, created_at, notes, clients(id, first_name, last_name, phone), procedure_types(id, display_name), distributors(id, name)";
+
     let query = supabase
       .from("client_procedures")
-      .select(
-        "id, created_at, paid, total_amount, amount_paid, notes, clients(id, first_name, last_name, phone), procedure_types(id, display_name), distributors(id, name)",
-        { count: "exact" },
-      )
+      .select(fullSelect, { count: "exact" })
       .order("created_at", { ascending: false })
       .range(from, to);
 
@@ -87,7 +89,53 @@ export async function GET(request: Request) {
       query = query.in("client_id", allClientIds);
     }
 
-    const { data, error, count } = await query;
+    let data: any[] | null = null;
+    let error: any = null;
+    let count: number | null = null;
+    {
+      const result: any = await query;
+      data = result.data;
+      error = result.error;
+      count = result.count;
+    }
+
+    // Compatibilidad con esquemas viejos en produccion donde aun no existen
+    // columnas monetarias agregadas al catalogo de tramites.
+    if (error?.code === "42703") {
+      let fallbackQuery = supabase
+        .from("client_procedures")
+        .select(fallbackSelect, { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (!showAll && !searchMode && date) {
+        const { start, end } = getDateRange(date);
+        fallbackQuery = fallbackQuery.gte("created_at", start).lt("created_at", end);
+      }
+
+      if (q) {
+        const allClientIds = Array.from(
+          new Set([...clientIdsByDomain, ...clientIdsByClientData]),
+        );
+        if (allClientIds.length === 0) {
+          return NextResponse.json({
+            data: [],
+            pagination: {
+              page,
+              pageSize,
+              total: 0,
+              totalPages: 1,
+            },
+          });
+        }
+        fallbackQuery = fallbackQuery.in("client_id", allClientIds);
+      }
+
+      const fallbackResult: any = await fallbackQuery;
+      data = fallbackResult.data;
+      error = fallbackResult.error;
+      count = fallbackResult.count;
+    }
 
     if (error) {
       console.error("GET /api/tramites error:", error);
