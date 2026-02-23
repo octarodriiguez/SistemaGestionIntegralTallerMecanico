@@ -1,79 +1,150 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { MessageCircle, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppShell } from "@/components/layout/app-shell";
 import toast from "react-hot-toast";
 import { NewClientWithVehicleForm } from "@/components/modules/tramites/new-client-with-vehicle-form";
 
-type Vehicle = {
+type ProcedureRow = {
   id: string;
-  domain: string;
+  createdAt: string;
+  client: {
+    firstName: string;
+    lastName: string;
+    phone: string;
+  } | null;
+  vehicle: {
+    brand: string;
+    model: string;
+    domain: string;
+  } | null;
+  procedureType: {
+    displayName: string;
+  } | null;
 };
 
-type Client = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string | null;
-  latestProcedure: {
-    procedureType: {
-      displayName: string;
-    } | null;
-    distributor: {
-      name: string;
-    } | null;
-  } | null;
-  vehicles: Vehicle[];
+type Pagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
+
+function todayString() {
+  const now = new Date();
+  const month = `${now.getMonth() + 1}`.padStart(2, "0");
+  const day = `${now.getDate()}`.padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function toWhatsappPhone(raw: string) {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("549")) return digits;
+  if (digits.startsWith("54")) return `549${digits.slice(2)}`;
+  if (digits.startsWith("0")) return `549${digits.slice(1)}`;
+  return `549${digits}`;
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return "-";
+  const datePart = value.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+    const [year, month, day] = datePart.split("-");
+    return `${day}/${month}/${year}`;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleDateString("es-AR");
+}
 
 export default function ClientesPage() {
-  const [clients, setClients] = useState<Client[]>([]);
+  const [rows, setRows] = useState<ProcedureRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [openCreateModal, setOpenCreateModal] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [dateFilter, setDateFilter] = useState(todayString());
+  const [pagination, setPagination] = useState<Pagination>({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
-  async function fetchClients(query?: string) {
+  const activeDate = useMemo(() => (showAll ? "" : dateFilter), [showAll, dateFilter]);
+
+  async function fetchProcedures({
+    query = search,
+    page = pagination.page,
+    date = activeDate,
+    all = showAll,
+  }: {
+    query?: string;
+    page?: number;
+    date?: string;
+    all?: boolean;
+  } = {}) {
     setLoading(true);
     try {
-      const url = query?.trim()
-        ? `/api/clientes?q=${encodeURIComponent(query.trim())}`
-        : "/api/clientes";
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error("No se pudo cargar clientes.");
+      const searchMode = query.trim().length > 0;
+      const effectiveAll = all || searchMode;
+      const params = new URLSearchParams();
+      if (query.trim()) params.set("q", query.trim());
+      params.set("page", String(page));
+      params.set("pageSize", String(pagination.pageSize));
+      if (effectiveAll) {
+        params.set("all", "1");
+      } else if (date) {
+        params.set("date", date);
+      }
+
+      const res = await fetch(`/api/tramites?${params.toString()}`, { cache: "no-store" });
       const json = await res.json();
-      setClients(json.data ?? []);
+      if (!res.ok) throw new Error(json.error ?? "No se pudieron cargar tramites.");
+
+      setRows(json.data ?? []);
+      setPagination(
+        json.pagination ?? {
+          page: 1,
+          pageSize: 20,
+          total: 0,
+          totalPages: 1,
+        },
+      );
     } catch (error) {
       console.error(error);
-      toast.error("Error al cargar clientes.");
+      toast.error(error instanceof Error ? error.message : "Error al cargar tramites.");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchClients();
-  }, []);
+    fetchProcedures({ page: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAll, dateFilter]);
 
   function handleSearch() {
-    fetchClients(search);
+    fetchProcedures({ page: 1, query: search });
   }
 
   async function handleCreateSuccess() {
     setOpenCreateModal(false);
-    await fetchClients(search);
+    await fetchProcedures({ page: 1 });
   }
 
   return (
     <AppShell hideHeader sectionLabel="Modulo" title="Clientes" subtitle="">
+      <div className="mx-auto w-full max-w-[1320px]">
       <Card className="rounded-2xl border-slate-200">
         <CardHeader className="space-y-3">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <CardTitle className="text-2xl text-slate-900">
-              Clientes y Vehiculos
+              Tramites de clientes
             </CardTitle>
             <Button
               onClick={() => setOpenCreateModal(true)}
@@ -83,16 +154,40 @@ export default function ClientesPage() {
               Nuevo cliente
             </Button>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500">
+
+          <div className="grid gap-2 md:grid-cols-[minmax(260px,380px)_170px_140px_120px] md:items-center">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500">
               <Search className="h-4 w-4" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full border-none bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
-                placeholder="Buscar por nombre, telefono o dominio"
+                placeholder="Buscar persona o dominio"
               />
             </div>
+
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => {
+                setDateFilter(e.target.value);
+                setShowAll(false);
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            />
+
+            <Button
+              variant={showAll ? "default" : "outline"}
+              onClick={() => setShowAll((prev) => !prev)}
+              className={
+                showAll
+                  ? "rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                  : "rounded-xl"
+              }
+            >
+              {showAll ? "Viendo todos" : "Ver todos"}
+            </Button>
+
             <Button
               onClick={handleSearch}
               className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
@@ -101,52 +196,76 @@ export default function ClientesPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+
+        <CardContent className="space-y-3">
           <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[850px] text-sm">
+            <table className="w-full min-w-[980px] text-sm">
               <thead className="bg-slate-100 text-left text-slate-600">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Cliente</th>
+                  <th className="px-4 py-3 font-medium">Apellido</th>
+                  <th className="px-4 py-3 font-medium">Nombre</th>
                   <th className="px-4 py-3 font-medium">Telefono</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
+                  <th className="px-4 py-3 font-medium">Marca</th>
+                  <th className="px-4 py-3 font-medium">Modelo</th>
+                  <th className="px-4 py-3 font-medium">Dominio</th>
                   <th className="px-4 py-3 font-medium">Tramite</th>
-                  <th className="px-4 py-3 font-medium">Distribuidora</th>
-                  <th className="px-4 py-3 font-medium">Vehiculos</th>
-                  <th className="px-4 py-3 font-medium">Dominios</th>
+                  <th className="px-4 py-3 font-medium">Fecha tramite</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                      Cargando clientes...
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                      Cargando tramites...
                     </td>
                   </tr>
-                ) : clients.length === 0 ? (
+                ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
-                      No hay clientes cargados.
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                      No hay tramites para esta Fecha.
                     </td>
                   </tr>
                 ) : (
-                  clients.map((client) => (
-                    <tr key={client.id} className="border-t border-slate-100">
+                  rows.map((row) => (
+                    <tr key={row.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 text-slate-700">
+                        {row.client?.firstName || "-"}
+                      </td>
                       <td className="px-4 py-3 font-medium text-slate-800">
-                        {client.lastName}, {client.firstName}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">{client.phone}</td>
-                      <td className="px-4 py-3 text-slate-700">{client.email || "-"}</td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {client.latestProcedure?.procedureType?.displayName || "-"}
+                        {row.client?.lastName || "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-700">
-                        {client.latestProcedure?.distributor?.name || "-"}
+                        {row.client?.phone || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">{client.vehicles.length}</td>
                       <td className="px-4 py-3 text-slate-700">
-                        {client.vehicles.length
-                          ? client.vehicles.map((v) => v.domain).join(", ")
-                          : "-"}
+                        {row.vehicle?.brand || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {row.vehicle?.model || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {row.vehicle?.domain || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {row.procedureType?.displayName || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        <div className="flex items-center gap-2">
+                          <span>
+                            {formatDate(row.createdAt)}
+                          </span>
+                          {row.client?.phone ? (
+                            <a
+                              href={`https://api.whatsapp.com/send?phone=${toWhatsappPhone(row.client.phone)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-700 transition hover:bg-emerald-100"
+                              title="Contactar por WhatsApp"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </a>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -154,8 +273,31 @@ export default function ClientesPage() {
               </tbody>
             </table>
           </div>
+
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <p className="text-sm text-slate-600">
+              Mostrando pagina {pagination.page} de {pagination.totalPages} ({pagination.total} tramites)
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                disabled={pagination.page <= 1 || loading}
+                onClick={() => fetchProcedures({ page: pagination.page - 1, query: search })}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                disabled={pagination.page >= pagination.totalPages || loading}
+                onClick={() => fetchProcedures({ page: pagination.page + 1, query: search })}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
+      </div>
 
       {openCreateModal ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-4 pt-10">

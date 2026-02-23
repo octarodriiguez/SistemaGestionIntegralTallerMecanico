@@ -27,9 +27,9 @@ export function AppShell({
 
   return (
     <main className="min-h-screen bg-slate-50 lg:h-dvh lg:overflow-hidden">
-      <div className="mx-auto grid min-h-screen w-full max-w-[1350px] grid-cols-1 gap-4 p-3 lg:h-full lg:min-h-0 lg:grid-cols-[210px_1fr] lg:p-1">
-        <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:h-full lg:overflow-hidden lg:p-4">
-          <div className="mb-2">
+      <div className="mx-auto grid min-h-screen w-full max-w-[1680px] grid-cols-1 gap-5 p-4 lg:h-full lg:min-h-0 lg:grid-cols-[250px_1fr] lg:p-4">
+        <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:h-full lg:overflow-hidden lg:p-5">
+          <div className="mb-4">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
               Taller GNC
             </p>
@@ -39,7 +39,7 @@ export function AppShell({
             <p className="mt-2 text-sm text-slate-600">Accesos del sistema.</p>
           </div>
 
-          <nav className="space-y-2 lg:max-h-[calc(100dvh-220px)] lg:overflow-auto">
+          <nav className="space-y-2 lg:max-h-[calc(100dvh-235px)] lg:overflow-auto">
             {appModules.map((module) => {
               const isActive =
                 pathname === module.href || pathname.startsWith(`${module.href}/`);

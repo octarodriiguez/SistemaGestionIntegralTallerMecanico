@@ -26,6 +26,7 @@ create table if not exists public.client_procedures (
   procedure_type_id uuid not null references public.procedure_types(id),
   distributor_id uuid null references public.distributors(id) on delete set null,
   paid boolean not null default false,
+  total_amount numeric(10,2) not null default 0,
   amount_paid numeric(10,2) not null default 0,
   notes text null,
   created_at timestamptz not null default now(),
@@ -34,6 +35,9 @@ create table if not exists public.client_procedures (
 
 alter table public.client_procedures
   add column if not exists paid boolean not null default false;
+
+alter table public.client_procedures
+  add column if not exists total_amount numeric(10,2) not null default 0;
 
 alter table public.client_procedures
   add column if not exists amount_paid numeric(10,2) not null default 0;

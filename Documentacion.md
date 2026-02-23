@@ -928,3 +928,342 @@ Observacion pendiente no bloqueante:
 - Modulo clientes enfocado en consulta/listado con alta por modal.
 - Modulo tramites enfocado en la operacion de alta con reglas de negocio basicas.
 - Backend conectado a Supabase por HTTP y funcionando con catalogos/tramites/clientes/vehiculos.
+
+---
+
+## Bitacora de avances (22-02-2026)
+
+### 1) Modulo Tramites: rediseño funcional y visual
+Se reestructuro el formulario principal de `Tramites` para reflejar el flujo operativo real del taller.
+
+Cambios aplicados:
+- Se oculto el encabezado superior del modulo (`hideHeader`).
+- Se elimino el campo `email` del formulario de alta.
+- Se reorganizo la UI por bloques:
+  1. Datos del cliente
+  2. Datos del vehiculo
+  3. Datos del tramite
+  4. Observaciones
+- Se puso `tipo de tramite` y `distribuidora` en la misma fila.
+- Se agregaron campos economicos separados:
+  - `Total a pagar`
+  - `Monto abonado`
+- Vehiculo obligatorio en alta (marca/modelo/dominio requeridos).
+
+Archivo principal:
+- `components/modules/tramites/new-client-with-vehicle-form.tsx`
+
+### 2) Reglas de negocio en tramites
+Se implementaron reglas de autocompletado para `Total a pagar` segun tipo de tramite:
+- `RENOVACION_OBLEA` -> 30000
+- `PRUEBA_HIDRAULICA` -> 180000
+- `REPARACION_VARIA` -> editable manualmente
+
+Validaciones backend:
+- `amountPaid <= totalAmount`
+- Distribuidora obligatoria solo para tramites que la requieren
+- Vehiculo obligatorio
+- Dominio unico
+
+Archivo backend:
+- `app/api/clientes/route.ts`
+
+### 3) Persistencia de montos de cobro
+Se ajusto el registro de `client_procedures` para guardar:
+- `paid`
+- `total_amount`
+- `amount_paid`
+
+SQL actualizado:
+- `scripts/sql/2026-02-21_client_procedures_catalogs.sql`
+
+Incluye:
+- columnas nuevas en creacion de tabla
+- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` para entornos ya existentes
+
+### 4) Modulo Clientes orientado a tramites masivos
+Se transformo la vista de `/clientes` para operar sobre historico de tramites (escenario de 1600+ registros).
+
+Cambios:
+- Filtro por fecha (por defecto: hoy)
+- Opcion `Ver todos`
+- Busqueda por texto
+- Paginacion
+- Tabla simplificada con columnas:
+  - Nombre
+  - Apellido
+  - Telefono
+  - Marca
+  - Modelo
+  - Dominio
+  - Tipo de tramite
+  - Fecha de tramite
+- Boton de contacto WhatsApp por fila:
+  - `https://api.whatsapp.com/send?phone=549...`
+
+Archivo principal:
+- `app/clientes/page.tsx`
+
+### 5) API nueva de tramites para filtros y paginacion
+Se creo endpoint dedicado para consulta operacional de tramites:
+- `GET /api/tramites`
+
+Capacidades:
+- filtros por `date`
+- modo `all=1`
+- paginacion (`page`, `pageSize`)
+- busqueda por:
+  - nombre/apellido/telefono
+  - dominio
+  - marca
+  - modelo
+
+Archivo:
+- `app/api/tramites/route.ts`
+
+### 6) Correcciones de errores en busqueda
+Problema detectado:
+- Error `PGRST100` por uso de `.or(...)` con campos embebidos (`clients.*`) en PostgREST.
+
+Solucion aplicada:
+- Se reemplazo por busqueda en 2 pasos:
+  1. resolver `client_id` por `clients` y `vehicles`
+  2. filtrar `client_procedures` con `in(client_id, ...)`
+
+Adicional:
+- Busqueda ahora case-insensitive consistente.
+- Si hay texto en busqueda, se ignora filtro de fecha y busca sobre todo el historico.
+
+### 7) Fix de validacion "Required"
+Problema detectado en alta:
+- Zod marcaba `vehicle.color` y `vehicle.notes` como `Required`.
+
+Causa:
+- uso incorrecto de `.required()` sobre objeto `vehicle`.
+
+Fix:
+- se elimino esa llamada para mantener `color/notes` opcionales.
+
+### 8) Compatibilidad temporal por esquema incompleto en BD
+Problema detectado:
+- Error `PGRST204` por columna faltante (`amount_paid`) en cache/esquema.
+
+Mitigacion aplicada:
+- fallback en backend para insertar `client_procedures` sin columnas nuevas si no existen aun.
+
+Nota:
+- una vez migrada la BD completa, el fallback puede retirarse.
+
+### 9) Migracion de 4000 registros desde CSV
+Se definio y uso estrategia de carga por staging:
+- `stg_clients`
+- `stg_vehicles`
+- `stg_client_procedures`
+
+Luego se migran a tablas finales:
+- `clients`
+- `vehicles`
+- `client_procedures`
+
+Punto clave resuelto:
+- Como `client_ref` no existe en tablas finales, se genero mapeo temporal `client_ref_map` para relacionar `client_ref -> client_id` real autogenerado por Supabase.
+
+### 10) Ajustes visuales finales
+- Se redujo sensacion de contenido "apretado a la derecha".
+- Se amplio y redistribuyo espacio en shell/layout.
+- Se centro el contenido del modulo clientes.
+- Se ajusto ancho util de tabla y filtros.
+
+Archivos de layout/UI tocados:
+- `components/layout/app-shell.tsx`
+- `app/clientes/page.tsx`
+- `app/tramites/page.tsx`
+
+### 11) Estado tecnico de cierre
+Verificaciones ejecutadas repetidamente tras cambios:
+- `npm run lint` -> OK
+- `npm run build` -> OK
+
+Pendiente no bloqueante:
+- warnings de Next.js 15 por `metadata.viewport` y `metadata.themeColor` (no afectan operacion)
+- falta de iconos del manifest (`icon-144x144.png`) en entorno local
+
+### 12) Estado funcional actual
+- Alta de tramite operativa con reglas de cobro.
+- Listado de clientes/tramites operativo para volumen alto, con filtros y paginacion.
+- Busqueda por persona/telefono/dominio/marca/modelo operativa.
+- Contacto por WhatsApp operativo desde cada fila.
+- Datos migrables desde CSV con estrategia de staging y mapeo de IDs.
+
+---
+
+## Modulo Alertas (Implementacion clave)
+
+### Objetivo del modulo
+El modulo `Alertas` es la funcionalidad central del sistema para recordar renovaciones de GNC.
+Su foco operativo es identificar, verificar y notificar clientes cuyo tramite de:
+- `RENOVACION_OBLEA`
+- `PRUEBA_HIDRAULICA`
+requiere contacto en el periodo actual, con verificacion externa via ENARGAS.
+
+### Alcance implementado en esta fase
+Se implemento un MVP funcional completo con:
+1. Tabla operativa de alertas con filtros, estado y acciones.
+2. Comprobacion masiva de vencimientos desde boton de UI.
+3. Integracion de scraping ENARGAS por dominio.
+4. Persistencia de estado por tramite (`pendiente / avisado / no corresponde`).
+5. Accion de aviso por WhatsApp desde cada fila.
+
+---
+
+### Flujo funcional del modulo
+
+#### 1) Carga inicial de alertas
+La pantalla `app/alertas/page.tsx` consulta `GET /api/alertas` y muestra una tabla con:
+- Datos del cliente y vehiculo
+- Tipo de tramite
+- Fecha del tramite interno
+- Fecha obtenida desde ENARGAS
+- Estado de alerta
+- Boton de accion `Avisar`
+
+#### 2) Filtros de trabajo
+La vista soporta:
+- Busqueda por persona, telefono, dominio, marca o modelo
+- Filtro por mes via fecha
+- Modo `Ver todos`
+- Filtro por estado:
+  - `PENDIENTE_DE_AVISAR`
+  - `AVISADO`
+  - `NO_CORRESPONDE_AVISAR`
+- Paginacion
+
+#### 3) Comprobacion de vencimientos
+Boton: `Comprobar vencimientos`
+- Ejecuta `POST /api/alertas/comprobar`
+- Recorre los registros filtrados (oblea / PH)
+- Obtiene dominio del cliente
+- Consulta ENARGAS via scraping
+- Compara mes/año de fecha ENARGAS contra mes/año del tramite interno
+- Actualiza estado:
+  - `PENDIENTE_DE_AVISAR` si coincide
+  - `NO_CORRESPONDE_AVISAR` si no coincide
+  - si ya estaba `AVISADO` y sigue correspondiendo, mantiene `AVISADO`
+
+#### 4) Aviso al cliente
+Boton por fila: `Avisar`
+- Ejecuta `POST /api/alertas/avisar`
+- Marca estado `AVISADO`
+- Guarda `notified_at`
+- Abre link de WhatsApp:
+  - `https://api.whatsapp.com/send?phone=549...`
+
+---
+
+### Componentes tecnicos implementados
+
+#### UI
+- `app/alertas/page.tsx`
+  - Tabla completa
+  - Filtros
+  - Paginacion
+  - Botones de accion
+
+#### APIs
+- `app/api/alertas/route.ts`
+  - listado + filtros + paginacion
+- `app/api/alertas/comprobar/route.ts`
+  - comprobacion masiva con scraping ENARGAS
+- `app/api/alertas/avisar/route.ts`
+  - actualizacion de estado a `AVISADO`
+
+#### Servicio de scraping
+- `lib/enargas-scraper.ts`
+  - Playwright + Chromium
+  - consulta por dominio en:
+    - `https://www.enargas.gob.ar/secciones/gas-natural-comprimido/consulta-dominio.php`
+  - extraccion de ultima fecha valida `dd/MM/yyyy`
+  - helper de comparacion por mes/año
+
+#### SQL de soporte
+- `scripts/sql/2026-02-22_alertas_status.sql`
+  - crea tabla `procedure_alert_status`
+  - indices por `procedure_id` y `status`
+  - trigger `updated_at`
+
+---
+
+### Modelo de estado de alertas
+Tabla: `public.procedure_alert_status`
+
+Campos clave:
+- `procedure_id` (FK a `client_procedures`, unico)
+- `status`:
+  - `PENDIENTE_DE_AVISAR`
+  - `AVISADO`
+  - `NO_CORRESPONDE_AVISAR`
+- `enargas_last_operation_date`
+- `last_checked_at`
+- `notified_at`
+- `notes`
+
+Observacion:
+- el estado se desacopla del tramite para tener trazabilidad especifica de alerta.
+
+---
+
+### Reglas de negocio aplicadas en comprobacion
+
+1. Se contemplan solo codigos:
+- `RENOVACION_OBLEA`
+- `PRUEBA_HIDRAULICA`
+
+2. Comparacion temporal:
+- Se compara mes y año (no dia) entre:
+  - fecha interna del tramite
+  - ultima fecha de operacion obtenida de ENARGAS
+
+3. Resultado:
+- Coincide mes/año -> `PENDIENTE_DE_AVISAR`
+- No coincide -> `NO_CORRESPONDE_AVISAR`
+
+4. Preservacion de estado avisado:
+- Si un registro ya estaba `AVISADO` y sigue cumpliendo condicion, no se revierte.
+
+5. Resguardo operativo:
+- Limite de seguridad para scraping masivo en un solo disparo (`slice(0, 200)` dominios) para evitar sobrecarga accidental.
+
+---
+
+### Requisitos operativos para usar el modulo
+
+1. Ejecutar SQL de estado:
+- `scripts/sql/2026-02-22_alertas_status.sql`
+
+2. Tener Playwright Chromium instalado localmente:
+```bash
+npx playwright install chromium
+```
+
+3. Variables Supabase configuradas:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+---
+
+### Estado actual del modulo
+- UI operativa: SI
+- Filtros y paginacion: SI
+- Estado por fila: SI
+- Boton avisar + WhatsApp: SI
+- Comprobacion ENARGAS automatica: SI
+- Persistencia de resultado de comprobacion: SI
+
+---
+
+### Proximos pasos recomendados
+1. Guardar historico de cada corrida de comprobacion (run_id, total evaluados, tiempo, errores).
+2. Soporte de mensajes predefinidos de WhatsApp para alertas.
+3. Cola/background job para comprobaciones largas.
+4. Estrategia de reintentos por dominio con fallo transitorio.
+5. Distincion visual entre alerta por Oblea y por PH con badges.

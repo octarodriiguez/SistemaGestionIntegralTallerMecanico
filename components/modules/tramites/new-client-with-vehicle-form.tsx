@@ -21,17 +21,27 @@ const initialForm = {
   firstName: "",
   lastName: "",
   phone: "",
-  email: "",
   procedureTypeId: "",
   distributorId: "",
-  procedureNotes: "",
-  paid: false,
+  totalAmount: "",
   amountPaid: "",
+  procedureNotes: "",
   brand: "",
   model: "",
   domain: "",
   year: "",
 };
+
+const FIXED_TOTAL_BY_CODE: Record<string, number> = {
+  RENOVACION_OBLEA: 30000,
+  PRUEBA_HIDRAULICA: 180000,
+};
+
+function getProcedureOptionLabel(item: ProcedureType) {
+  if (item.code === "RENOVACION_OBLEA") return "O";
+  if (item.code === "PRUEBA_HIDRAULICA") return "PH";
+  return item.display_name;
+}
 
 type Props = {
   compact?: boolean;
@@ -66,20 +76,43 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
     [procedureTypes, form.procedureTypeId],
   );
 
+  const isReparacionVaria = selectedProcedureType?.code === "REPARACION_VARIA";
+  const hasFixedTotal = Boolean(selectedProcedureType?.code && FIXED_TOTAL_BY_CODE[selectedProcedureType.code]);
+
+  function handleProcedureTypeChange(procedureTypeId: string) {
+    const nextProcedure = procedureTypes.find((item) => item.id === procedureTypeId) ?? null;
+    const fixed = nextProcedure?.code ? FIXED_TOTAL_BY_CODE[nextProcedure.code] : undefined;
+
+    setForm((prev) => ({
+      ...prev,
+      procedureTypeId,
+      distributorId: "",
+      totalAmount:
+        typeof fixed === "number"
+          ? String(fixed)
+          : nextProcedure?.code === "REPARACION_VARIA"
+            ? prev.totalAmount
+            : "",
+    }));
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
     try {
+      const totalAmountNumber = Number(form.totalAmount || 0);
+      const amountPaidNumber = Number(form.amountPaid || 0);
+
       const payload = {
         firstName: form.firstName,
         lastName: form.lastName,
         phone: form.phone,
-        email: form.email,
         procedureTypeId: form.procedureTypeId,
         distributorId: form.distributorId,
         procedureNotes: form.procedureNotes,
-        paid: form.paid,
-        amountPaid: form.amountPaid ? Number(form.amountPaid) : 0,
+        paid: amountPaidNumber >= totalAmountNumber && totalAmountNumber > 0,
+        totalAmount: totalAmountNumber,
+        amountPaid: amountPaidNumber,
         vehicle: {
           brand: form.brand,
           model: form.model,
@@ -87,6 +120,7 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
           year: form.year ? Number(form.year) : undefined,
         },
       };
+
       console.log("[tramites] payload alta cliente", payload);
 
       const res = await fetch("/api/clientes", {
@@ -116,116 +150,41 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
   }
 
   return (
-    <form className="space-y-3" onSubmit={handleSubmit}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input
-          required
-          value={form.firstName}
-          onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))}
-          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-          placeholder="Nombre"
-        />
-        <input
-          required
-          value={form.lastName}
-          onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))}
-          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-          placeholder="Apellido"
-        />
+    <form className="space-y-4" onSubmit={handleSubmit}>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+          Datos del cliente
+        </p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <input
+            required
+            value={form.firstName}
+            onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            placeholder="Nombre"
+          />
+          <input
+            required
+            value={form.lastName}
+            onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            placeholder="Apellido"
+          />
+          <input
+            required
+            value={form.phone}
+            onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            placeholder="Telefono"
+          />
+        </div>
       </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input
-          required
-          value={form.phone}
-          onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
-          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-          placeholder="Telefono"
-        />
-        <input
-          type="email"
-          value={form.email}
-          onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-          placeholder="Email (opcional)"
-        />
-      </div>
-
-      <select
-        required
-        value={form.procedureTypeId}
-        onChange={(e) =>
-          setForm((prev) => ({ ...prev, procedureTypeId: e.target.value, distributorId: "" }))
-        }
-        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-      >
-        <option value="">Selecciona tipo de tramite...</option>
-        {procedureTypes.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.display_name}
-          </option>
-        ))}
-      </select>
-
-      <select
-        required={Boolean(selectedProcedureType?.requires_distributor)}
-        value={form.distributorId}
-        onChange={(e) => setForm((prev) => ({ ...prev, distributorId: e.target.value }))}
-        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-      >
-        <option value="">
-          {selectedProcedureType?.requires_distributor
-            ? "Selecciona distribuidora..."
-            : "Distribuidora (opcional)"}
-        </option>
-        {distributors.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <select
-          required
-          value={form.paid ? "SI" : "NO"}
-          onChange={(e) =>
-            setForm((prev) => ({
-              ...prev,
-              paid: e.target.value === "SI",
-              amountPaid: e.target.value === "SI" ? prev.amountPaid : "",
-            }))
-          }
-          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-        >
-          <option value="NO">No pagado</option>
-          <option value="SI">Pagado</option>
-        </select>
-        <input
-          type="number"
-          min={0}
-          step="0.01"
-          required={form.paid}
-          disabled={!form.paid}
-          value={form.amountPaid}
-          onChange={(e) => setForm((prev) => ({ ...prev, amountPaid: e.target.value }))}
-          className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none disabled:bg-slate-100 disabled:text-slate-400 focus:border-slate-400"
-          placeholder="Monto abonado"
-        />
-      </div>
-
-      <textarea
-        value={form.procedureNotes}
-        onChange={(e) => setForm((prev) => ({ ...prev, procedureNotes: e.target.value }))}
-        className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-        placeholder="Observacion del tramite (opcional)"
-      />
 
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-          Vehiculo (obligatorio)
+          Datos del vehiculo
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-4">
           <input
             required
             value={form.brand}
@@ -256,6 +215,80 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
             placeholder="Anio"
           />
         </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+          Datos del tramite
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <select
+            required
+            value={form.procedureTypeId}
+            onChange={(e) => handleProcedureTypeChange(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+          >
+            <option value="">Selecciona tipo de tramite...</option>
+            {procedureTypes.map((item) => (
+              <option key={item.id} value={item.id}>
+                {getProcedureOptionLabel(item)}
+              </option>
+            ))}
+          </select>
+
+          <select
+            required={Boolean(selectedProcedureType?.requires_distributor)}
+            value={form.distributorId}
+            onChange={(e) => setForm((prev) => ({ ...prev, distributorId: e.target.value }))}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+          >
+            <option value="">
+              {selectedProcedureType?.requires_distributor
+                ? "Selecciona distribuidora..."
+                : "Distribuidora (opcional)"}
+            </option>
+            {distributors.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            required
+            readOnly={hasFixedTotal && !isReparacionVaria}
+            value={form.totalAmount}
+            onChange={(e) => setForm((prev) => ({ ...prev, totalAmount: e.target.value }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none read-only:bg-slate-100 focus:border-slate-400"
+            placeholder="Total a pagar"
+          />
+
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            required
+            value={form.amountPaid}
+            onChange={(e) => setForm((prev) => ({ ...prev, amountPaid: e.target.value }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            placeholder="Monto abonado"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+          Observaciones
+        </p>
+        <textarea
+          value={form.procedureNotes}
+          onChange={(e) => setForm((prev) => ({ ...prev, procedureNotes: e.target.value }))}
+          className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+          placeholder="Detalle de lo realizado (opcional)"
+        />
       </div>
 
       <Button

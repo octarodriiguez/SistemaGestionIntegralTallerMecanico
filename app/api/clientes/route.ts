@@ -9,14 +9,9 @@ const createClientSchema = z.object({
   procedureTypeId: z.string().trim().min(1, "El tipo de tramite es obligatorio."),
   distributorId: z.string().trim().optional().or(z.literal("")),
   procedureNotes: z.string().trim().optional(),
+  totalAmount: z.number().min(0, "El total a pagar no puede ser negativo."),
   paid: z.boolean(),
   amountPaid: z.number().min(0, "El monto abonado no puede ser negativo."),
-  email: z
-    .string()
-    .trim()
-    .email("El email no es valido.")
-    .optional()
-    .or(z.literal("")),
   address: z.string().trim().optional(),
   notes: z.string().trim().optional(),
   vehicle: z
@@ -52,6 +47,7 @@ function mapClient(row: any) {
           id: latestProcedure.id,
           notes: latestProcedure.notes,
           paid: latestProcedure.paid,
+          totalAmount: latestProcedure.total_amount,
           amountPaid: latestProcedure.amount_paid,
           createdAt: latestProcedure.created_at,
           procedureType: latestProcedure.procedure_types
@@ -116,7 +112,7 @@ export async function GET(request: Request) {
     let query = supabaseServer
       .from("clients")
       .select(
-        "id, first_name, last_name, phone, email, address, notes, created_at, updated_at, vehicles(id, client_id, brand, model, year, domain, color, notes, created_at, updated_at), client_procedures(id, notes, paid, amount_paid, created_at, procedure_types(id, code, display_name), distributors(id, name))",
+        "id, first_name, last_name, phone, email, address, notes, created_at, updated_at, vehicles(id, client_id, brand, model, year, domain, color, notes, created_at, updated_at), client_procedures(id, notes, paid, total_amount, amount_paid, created_at, procedure_types(id, code, display_name), distributors(id, name))",
       )
       .order("last_name", { ascending: true })
       .order("first_name", { ascending: true })
@@ -132,7 +128,7 @@ export async function GET(request: Request) {
       }
     }
 
-    let { data, error } = await query;
+    let { data, error }: { data: any[] | null; error: any } = await query;
 
     // Compatibilidad: si aun no se ejecutaron las columnas nuevas (paid/amount_paid),
     // hacemos fallback para no romper el listado de clientes.
@@ -146,8 +142,8 @@ export async function GET(request: Request) {
         .order("first_name", { ascending: true })
         .limit(100);
 
-      data = fallback.data;
-      error = fallback.error;
+      data = (fallback.data as any[] | null) ?? null;
+      error = fallback.error as any;
     }
 
     if (error) {
@@ -225,16 +221,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (payload.paid && payload.amountPaid <= 0) {
+    if (payload.amountPaid > payload.totalAmount) {
       return NextResponse.json(
-        { error: "Si esta pagado, el monto abonado debe ser mayor a 0." },
-        { status: 400 },
-      );
-    }
-
-    if (!payload.paid && payload.amountPaid > 0) {
-      return NextResponse.json(
-        { error: "Si no esta pagado, el monto abonado debe ser 0." },
+        { error: "El monto abonado no puede ser mayor al total a pagar." },
         { status: 400 },
       );
     }
@@ -290,7 +279,7 @@ export async function POST(request: Request) {
         first_name: payload.firstName,
         last_name: payload.lastName,
         phone: payload.phone,
-        email: payload.email || null,
+        email: payload.totalAmount > 0 ? String(payload.totalAmount) : null,
         address: payload.address || null,
         notes: payload.notes || null,
       })
@@ -341,6 +330,7 @@ export async function POST(request: Request) {
         distributor_id: payload.distributorId || null,
         notes: payload.procedureNotes || null,
         paid: payload.paid,
+        total_amount: payload.totalAmount,
         amount_paid: payload.amountPaid,
       });
 
@@ -362,6 +352,7 @@ export async function POST(request: Request) {
         procedure_type_id: payload.procedureTypeId,
         distributor_id: payload.distributorId || null,
         notes: payload.procedureNotes || null,
+        total_amount: payload.totalAmount,
       });
       procedureError = fallback.error;
     }

@@ -30,10 +30,10 @@ export const appModules = [
     icon: ClipboardList,
   },
   {
-    key: "alertas",
-    href: "/alertas",
-    title: "Alertas",
-    description: "Seguimiento de vencimientos y recordatorios mensuales.",
+    key: "avisos",
+    href: "/avisos",
+    title: "Avisos",
+    description: "Vencimientos del mes y avisos para retiro de tramites.",
     icon: BellRing,
   },
   {

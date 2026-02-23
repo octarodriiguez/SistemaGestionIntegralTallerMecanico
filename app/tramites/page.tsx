@@ -8,6 +8,7 @@ export default function TramitesPage() {
       sectionLabel="Modulo"
       title="Tramites"
       subtitle="Alta de cliente con tramite inicial y vehiculo obligatorio."
+      hideHeader
     >
       <div className="grid gap-4">
         <Card className="rounded-2xl border-slate-200">
