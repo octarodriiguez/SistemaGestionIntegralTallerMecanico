@@ -254,7 +254,7 @@ export async function POST(request: Request) {
     const domain = normalizeDomain(vehicle.domain);
     const { data: existingDomain, error: domainError } = await supabaseServer
       .from("vehicles")
-      .select("id")
+      .select("id, client_id, brand, model, year, domain, color, notes, created_at, updated_at")
       .eq("domain", domain)
       .maybeSingle();
 
@@ -266,66 +266,88 @@ export async function POST(request: Request) {
       );
     }
 
+    let client: any = null;
+    let vehicles: any[] = [];
+    let targetClientId: string;
+
     if (existingDomain) {
-      return NextResponse.json(
-        { error: "El dominio ya existe en otro vehiculo." },
-        { status: 409 },
-      );
+      targetClientId = existingDomain.client_id;
+      vehicles = [existingDomain];
+
+      const { data: existingClient, error: existingClientError } = await supabaseServer
+        .from("clients")
+        .select(
+          "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
+        )
+        .eq("id", targetClientId)
+        .single();
+
+      if (existingClientError || !existingClient) {
+        console.error("POST /api/clientes existing client fetch error:", existingClientError);
+        return NextResponse.json(
+          { error: "No se pudo resolver el cliente del dominio existente." },
+          { status: 500 },
+        );
+      }
+      client = existingClient;
+    } else {
+      const { data: createdClient, error: clientError } = await supabaseServer
+        .from("clients")
+        .insert({
+          first_name: payload.firstName,
+          last_name: payload.lastName,
+          phone: payload.phone,
+          email: payload.totalAmount > 0 ? String(payload.totalAmount) : null,
+          address: payload.address || null,
+          notes: payload.notes || null,
+        })
+        .select(
+          "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
+        )
+        .single();
+
+      if (clientError || !createdClient) {
+        console.error("POST /api/clientes client create error:", clientError);
+        return NextResponse.json(
+          { error: "No se pudo crear el cliente." },
+          { status: 500 },
+        );
+      }
+
+      client = createdClient;
+      targetClientId = createdClient.id;
+
+      const { data: createdVehicle, error: vehicleError } = await supabaseServer
+        .from("vehicles")
+        .insert({
+          client_id: createdClient.id,
+          brand: vehicle.brand,
+          model: vehicle.model,
+          domain,
+          year: vehicle.year ?? null,
+          color: vehicle.color || null,
+          notes: vehicle.notes || null,
+        })
+        .select(
+          "id, client_id, brand, model, year, domain, color, notes, created_at, updated_at",
+        )
+        .single();
+
+      if (vehicleError) {
+        console.error("POST /api/clientes vehicle create error:", vehicleError);
+        return NextResponse.json(
+          { error: "Cliente creado, pero no se pudo crear el vehiculo." },
+          { status: 500 },
+        );
+      }
+
+      vehicles = createdVehicle ? [createdVehicle] : [];
     }
-
-    const { data: client, error: clientError } = await supabaseServer
-      .from("clients")
-      .insert({
-        first_name: payload.firstName,
-        last_name: payload.lastName,
-        phone: payload.phone,
-        email: payload.totalAmount > 0 ? String(payload.totalAmount) : null,
-        address: payload.address || null,
-        notes: payload.notes || null,
-      })
-      .select(
-        "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
-      )
-      .single();
-
-    if (clientError || !client) {
-      console.error("POST /api/clientes client create error:", clientError);
-      return NextResponse.json(
-        { error: "No se pudo crear el cliente." },
-        { status: 500 },
-      );
-    }
-
-    const { data: createdVehicle, error: vehicleError } = await supabaseServer
-      .from("vehicles")
-      .insert({
-        client_id: client.id,
-        brand: vehicle.brand,
-        model: vehicle.model,
-        domain,
-        year: vehicle.year ?? null,
-        color: vehicle.color || null,
-        notes: vehicle.notes || null,
-      })
-      .select(
-        "id, client_id, brand, model, year, domain, color, notes, created_at, updated_at",
-      )
-      .single();
-
-    if (vehicleError) {
-      console.error("POST /api/clientes vehicle create error:", vehicleError);
-      return NextResponse.json(
-        { error: "Cliente creado, pero no se pudo crear el vehiculo." },
-        { status: 500 },
-      );
-    }
-
-    const vehicles: any[] = createdVehicle ? [createdVehicle] : [];
 
     let { error: procedureError } = await supabaseServer
       .from("client_procedures")
       .insert({
-        client_id: client.id,
+        client_id: targetClientId,
         procedure_type_id: payload.procedureTypeId,
         distributor_id: payload.distributorId || null,
         notes: payload.procedureNotes || null,
@@ -348,7 +370,7 @@ export async function POST(request: Request) {
       );
 
       const fallback = await supabaseServer.from("client_procedures").insert({
-        client_id: client.id,
+        client_id: targetClientId,
         procedure_type_id: payload.procedureTypeId,
         distributor_id: payload.distributorId || null,
         notes: payload.procedureNotes || null,

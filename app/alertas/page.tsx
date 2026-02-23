@@ -304,8 +304,12 @@ export default function AlertasPage() {
       if (!res.ok) throw new Error(json.error ?? "No se pudo actualizar estado.");
 
       if (action === "notified" && row.client?.phone) {
+        const message =
+          row.procedureType?.code === "PRUEBA_HIDRAULICA"
+            ? "Hola buenas, le hablo del taller de GNC Cosquin para informarle que ya se encuentra listo el tubo para ser colocado"
+            : "Hola buenas, le hablo del taller de GNC Cosquin para informarle que ya se encuentra la OBLEA para ser retirada";
         window.open(
-          `https://api.whatsapp.com/send?phone=${toWhatsappPhone(row.client.phone)}`,
+          `https://api.whatsapp.com/send?phone=${toWhatsappPhone(row.client.phone)}&text=${encodeURIComponent(message)}`,
           "_blank",
         );
       }

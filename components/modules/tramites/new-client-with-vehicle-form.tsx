@@ -161,14 +161,14 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
             value={form.firstName}
             onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            placeholder="Nombre"
+            placeholder="Apellido"
           />
           <input
             required
             value={form.lastName}
             onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            placeholder="Apellido"
+            placeholder="Nombre"
           />
           <input
             required
