@@ -11,6 +11,9 @@ import { NewClientWithVehicleForm } from "@/components/modules/tramites/new-clie
 type ProcedureRow = {
   id: string;
   createdAt: string;
+  paid: boolean | null;
+  totalAmount: number | null;
+  amountPaid: number | null;
   client: {
     firstName: string;
     lastName: string;
@@ -22,6 +25,7 @@ type ProcedureRow = {
     domain: string;
   } | null;
   procedureType: {
+    code?: string;
     displayName: string;
   } | null;
 };
@@ -59,6 +63,14 @@ function formatDate(value: string | null | undefined) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "-";
   return parsed.toLocaleDateString("es-AR");
+}
+
+function formatAmount(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return Number(value).toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function ClientesPage() {
@@ -198,18 +210,18 @@ export default function ClientesPage() {
         </CardHeader>
 
         <CardContent className="space-y-3">
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
-            <table className="w-full min-w-[980px] text-sm">
+          <div className="rounded-xl border border-slate-200">
+            <table className="w-full table-fixed text-xs">
               <thead className="bg-slate-100 text-left text-slate-600">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Apellido</th>
-                  <th className="px-4 py-3 font-medium">Nombre</th>
-                  <th className="px-4 py-3 font-medium">Telefono</th>
-                  <th className="px-4 py-3 font-medium">Marca</th>
-                  <th className="px-4 py-3 font-medium">Modelo</th>
-                  <th className="px-4 py-3 font-medium">Dominio</th>
-                  <th className="px-4 py-3 font-medium">Tramite</th>
-                  <th className="px-4 py-3 font-medium">Fecha tramite</th>
+                  <th className="w-[25%] px-3 py-2.5 font-medium">Cliente</th>
+                  <th className="w-[20%] px-3 py-2.5 font-medium">Vehiculo</th>
+                  <th className="w-[12%] px-3 py-2.5 font-medium">Tramite</th>
+                  <th className="w-[9%] px-3 py-2.5 font-medium">Total</th>
+                  <th className="w-[9%] px-3 py-2.5 font-medium">Abonado</th>
+                  <th className="w-[9%] px-3 py-2.5 font-medium">Saldo</th>
+                  <th className="w-[7%] px-3 py-2.5 font-medium">Pagado</th>
+                  <th className="w-[9%] px-3 py-2.5 font-medium">Fecha</th>
                 </tr>
               </thead>
               <tbody>
@@ -228,29 +240,49 @@ export default function ClientesPage() {
                 ) : (
                   rows.map((row) => (
                     <tr key={row.id} className="border-t border-slate-100">
-                      <td className="px-4 py-3 text-slate-700">
-                        {row.client?.firstName || "-"}
+                      <td className="px-3 py-2.5 text-slate-700">
+                        <div className="truncate font-medium text-slate-800">
+                          {`${row.client?.lastName || "-"}, ${row.client?.firstName || "-"}`}
+                        </div>
+                        <div className="truncate text-[11px] text-slate-600">
+                          {row.client?.phone || "-"}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {row.client?.lastName || "-"}
+                      <td className="px-3 py-2.5 text-slate-700">
+                        <div className="truncate">
+                          {row.vehicle ? `${row.vehicle.brand} ${row.vehicle.model}` : "-"}
+                        </div>
+                        <div className="truncate font-semibold tracking-wide text-slate-800">
+                          {row.vehicle?.domain || "-"}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {row.client?.phone || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {row.vehicle?.brand || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {row.vehicle?.model || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        {row.vehicle?.domain || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-700">
+                      <td className="px-3 py-2.5 text-slate-700">
                         {row.procedureType?.displayName || "-"}
                       </td>
-                      <td className="px-4 py-3 text-slate-700">
-                        <div className="flex items-center gap-2">
+                      <td className="px-3 py-2.5 text-slate-700">
+                        {formatAmount(row.totalAmount)}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-700">
+                        {formatAmount(row.amountPaid)}
+                      </td>
+                      <td className="px-3 py-2.5 font-semibold text-slate-700">
+                        {formatAmount(
+                          Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0),
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span
+                          className={`inline-flex rounded-full border px-1.5 py-[1px] text-[10px] font-semibold leading-3 ${
+                            row.paid
+                              ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                              : "border-amber-200 bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {row.paid ? "SI" : "NO"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-700">
+                        <div className="flex items-center gap-1.5">
                           <span>
                             {formatDate(row.createdAt)}
                           </span>
@@ -259,10 +291,10 @@ export default function ClientesPage() {
                               href={`https://api.whatsapp.com/send?phone=${toWhatsappPhone(row.client.phone)}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-emerald-700 transition hover:bg-emerald-100"
+                              className="inline-flex items-center rounded-lg border border-emerald-300 bg-emerald-50 px-1.5 py-1 text-emerald-700 transition hover:bg-emerald-100"
                               title="Contactar por WhatsApp"
                             >
-                              <MessageCircle className="h-4 w-4" />
+                              <MessageCircle className="h-3.5 w-3.5" />
                             </a>
                           ) : null}
                         </div>
@@ -300,8 +332,8 @@ export default function ClientesPage() {
       </div>
 
       {openCreateModal ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-4 pt-10">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-2 pt-4">
+          <div className="h-[92vh] w-[96vw] rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 p-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">
@@ -315,8 +347,8 @@ export default function ClientesPage() {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="max-h-[70vh] overflow-auto p-4">
-              <NewClientWithVehicleForm compact onSuccess={handleCreateSuccess} />
+            <div className="h-[calc(92vh-78px)] overflow-auto p-4">
+              <NewClientWithVehicleForm onSuccess={handleCreateSuccess} />
             </div>
           </div>
         </div>

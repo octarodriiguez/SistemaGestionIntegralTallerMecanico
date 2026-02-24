@@ -294,12 +294,12 @@ export async function POST(request: Request) {
       const { data: createdClient, error: clientError } = await supabaseServer
         .from("clients")
         .insert({
-          first_name: payload.firstName,
-          last_name: payload.lastName,
+          first_name: payload.firstName.toUpperCase(),
+          last_name: payload.lastName.toUpperCase(),
           phone: payload.phone,
           email: payload.totalAmount > 0 ? String(payload.totalAmount) : null,
           address: payload.address || null,
-          notes: payload.notes || null,
+          notes: payload.notes ? payload.notes.toUpperCase() : null,
         })
         .select(
           "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
@@ -321,12 +321,12 @@ export async function POST(request: Request) {
         .from("vehicles")
         .insert({
           client_id: createdClient.id,
-          brand: vehicle.brand,
-          model: vehicle.model,
+          brand: vehicle.brand.toUpperCase(),
+          model: vehicle.model.toUpperCase(),
           domain,
           year: vehicle.year ?? null,
           color: vehicle.color || null,
-          notes: vehicle.notes || null,
+          notes: vehicle.notes ? vehicle.notes.toUpperCase() : null,
         })
         .select(
           "id, client_id, brand, model, year, domain, color, notes, created_at, updated_at",
@@ -344,17 +344,23 @@ export async function POST(request: Request) {
       vehicles = createdVehicle ? [createdVehicle] : [];
     }
 
-    let { error: procedureError } = await supabaseServer
+    let createdProcedureId: string | null = null;
+
+    let { data: createdProcedure, error: procedureError } = await supabaseServer
       .from("client_procedures")
       .insert({
         client_id: targetClientId,
         procedure_type_id: payload.procedureTypeId,
         distributor_id: payload.distributorId || null,
-        notes: payload.procedureNotes || null,
+        notes: payload.procedureNotes ? payload.procedureNotes.toUpperCase() : null,
         paid: payload.paid,
         total_amount: payload.totalAmount,
         amount_paid: payload.amountPaid,
-      });
+      })
+      .select("id")
+      .single();
+
+    createdProcedureId = createdProcedure?.id ?? null;
 
     // Compatibilidad temporal: si la BD todavia no tiene paid/amount_paid
     // (PGRST204 en schema cache), insertamos sin esas columnas.
@@ -369,13 +375,19 @@ export async function POST(request: Request) {
         procedureError,
       );
 
-      const fallback = await supabaseServer.from("client_procedures").insert({
-        client_id: targetClientId,
-        procedure_type_id: payload.procedureTypeId,
-        distributor_id: payload.distributorId || null,
-        notes: payload.procedureNotes || null,
-        total_amount: payload.totalAmount,
-      });
+      const fallback = await supabaseServer
+        .from("client_procedures")
+        .insert({
+          client_id: targetClientId,
+          procedure_type_id: payload.procedureTypeId,
+          distributor_id: payload.distributorId || null,
+          notes: payload.procedureNotes ? payload.procedureNotes.toUpperCase() : null,
+          total_amount: payload.totalAmount,
+        })
+        .select("id")
+        .single();
+
+      createdProcedureId = fallback.data?.id ?? null;
       procedureError = fallback.error;
     }
 
@@ -388,6 +400,28 @@ export async function POST(request: Request) {
         },
         { status: 500 },
       );
+    }
+
+    // Si el tramite no es REPARACION_VARIA, lo dejamos pendiente de carga en oficina.
+    // Si la tabla no existe todavia, no bloqueamos el alta principal.
+    if (createdProcedureId && procedureType.requires_distributor) {
+      const { error: officeStatusError } = await supabaseServer
+        .from("procedure_office_status")
+        .upsert(
+          {
+            procedure_id: createdProcedureId,
+            status: "PENDIENTE_CARGA",
+            notes: "Pendiente de carga en WINPEC",
+          },
+          { onConflict: "procedure_id" },
+        );
+
+      if (officeStatusError) {
+        console.warn(
+          "POST /api/clientes office status warning (non-blocking):",
+          officeStatusError,
+        );
+      }
     }
 
     return NextResponse.json(

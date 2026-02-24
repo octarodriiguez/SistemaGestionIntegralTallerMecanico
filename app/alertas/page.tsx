@@ -40,6 +40,9 @@ type DeliveryRow = {
   id: string;
   createdAt: string;
   status: "PENDIENTE_RECEPCION" | "RECIBIDO" | "AVISADO_RETIRO" | "RETIRADO" | string;
+  paid: boolean | null;
+  totalAmount: number | null;
+  amountPaid: number | null;
   receivedAt: string | null;
   notifiedAt: string | null;
   pickedUpAt: string | null;
@@ -123,6 +126,14 @@ function formatDate(value: string | null | undefined) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "-";
   return parsed.toLocaleDateString("es-AR");
+}
+
+function formatAmount(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return Number(value).toLocaleString("es-AR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function AlertasPage() {
@@ -295,10 +306,26 @@ export default function AlertasPage() {
     action: "received" | "notified" | "retired",
   ) {
     try {
+      let amountPaid: number | undefined;
+      if (action === "retired") {
+        const remaining = Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0);
+        const input = window.prompt(
+          `Monto abonado al retirar (saldo actual: ${remaining}):`,
+          remaining > 0 ? String(remaining) : "0",
+        );
+        if (input === null) return;
+        const parsed = Number(input.replace(",", "."));
+        if (Number.isNaN(parsed) || parsed < 0) {
+          toast.error("Monto invalido.");
+          return;
+        }
+        amountPaid = parsed;
+      }
+
       const res = await fetch("/api/avisos/retiro/estado", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ procedureId: row.id, action }),
+        body: JSON.stringify({ procedureId: row.id, action, amountPaid }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "No se pudo actualizar estado.");
@@ -422,12 +449,14 @@ export default function AlertasPage() {
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan={9} className="px-4 py-8 text-center text-slate-500">`r`n                            Cargando avisos...
+                          <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                            Cargando avisos...
                           </td>
                         </tr>
                       ) : rows.length === 0 ? (
                         <tr>
-                          <td colSpan={9} className="px-4 py-8 text-center text-slate-500">`r`n                            No hay avisos para este filtro.
+                          <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                            No hay avisos para este filtro.
                           </td>
                         </tr>
                       ) : (
@@ -570,26 +599,30 @@ export default function AlertasPage() {
                   <table className="w-full table-fixed text-xs">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
-                        <th className="w-[19%] px-3 py-2.5 font-medium">Cliente</th>
-                        <th className="w-[12%] px-3 py-2.5 font-medium">Telefono</th>
-                        <th className="w-[10%] px-3 py-2.5 font-medium">Dominio</th>
-                        <th className="w-[16%] px-3 py-2.5 font-medium">Vehiculo</th>
-                        <th className="w-[7%] px-3 py-2.5 font-medium">Tramite</th>
-                        <th className="w-[8%] px-3 py-2.5 font-medium">F. alta</th>
-                        <th className="w-[8%] px-3 py-2.5 font-medium">Estado</th>
-                        <th className="w-[20%] px-3 py-2.5 font-medium">Acciones</th>
+                        <th className="w-[16%] px-3 py-2.5 font-medium">Cliente</th>
+                        <th className="w-[10%] px-3 py-2.5 font-medium">Telefono</th>
+                        <th className="w-[8%] px-3 py-2.5 font-medium">Dominio</th>
+                        <th className="w-[14%] px-3 py-2.5 font-medium">Vehiculo</th>
+                        <th className="w-[5%] px-3 py-2.5 font-medium">Tramite</th>
+                        <th className="w-[7%] px-3 py-2.5 font-medium">F. alta</th>
+                        <th className="w-[7%] px-3 py-2.5 font-medium">Total</th>
+                        <th className="w-[7%] px-3 py-2.5 font-medium">Abonado</th>
+                        <th className="w-[7%] px-3 py-2.5 font-medium">Saldo</th>
+                        <th className="w-[6%] px-3 py-2.5 font-medium">Pagado</th>
+                        <th className="w-[6%] px-3 py-2.5 font-medium">Estado</th>
+                        <th className="w-[17%] px-3 py-2.5 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {deliveryLoading ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
                             Cargando retiros...
                           </td>
                         </tr>
                       ) : deliveryRows.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
                             No hay trámites para retiro.
                           </td>
                         </tr>
@@ -621,6 +654,22 @@ export default function AlertasPage() {
                             </td>
                             <td className="px-3 py-2.5 text-slate-700">
                               <div className="truncate">{formatDate(row.createdAt)}</div>
+                            </td>
+                            <td className="px-3 py-2.5 text-slate-700">{formatAmount(row.totalAmount)}</td>
+                            <td className="px-3 py-2.5 text-slate-700">{formatAmount(row.amountPaid)}</td>
+                            <td className="px-3 py-2.5 font-semibold text-slate-700">
+                              {formatAmount(Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0))}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span
+                                className={`inline-flex rounded-full border px-1.5 py-[1px] text-[9px] font-semibold leading-3 ${
+                                  row.paid
+                                    ? "border-emerald-200 bg-emerald-100 text-emerald-700"
+                                    : "border-amber-200 bg-amber-100 text-amber-700"
+                                }`}
+                              >
+                                {row.paid ? "SI" : "NO"}
+                              </span>
                             </td>
                             <td className="px-3 py-2.5">
                               <span

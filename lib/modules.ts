@@ -7,6 +7,8 @@ import {
   Users,
 } from "lucide-react";
 
+export type AppRole = "OFICINA" | "MESA_ENTRADA";
+
 export const appModules = [
   {
     key: "dashboard",
@@ -51,3 +53,11 @@ export const appModules = [
     icon: FileText,
   },
 ] as const;
+
+export function getModulesByRole(role: AppRole | null | undefined) {
+  if (role === "OFICINA") return appModules;
+  return appModules.filter(
+    (module) =>
+      !["avisos", "distribuidoras", "comprobantes"].includes(module.key),
+  );
+}

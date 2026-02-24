@@ -5,6 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 const schema = z.object({
   procedureId: z.string().min(1),
   action: z.enum(["received", "notified", "retired"]),
+  amountPaid: z.number().min(0).optional(),
 });
 
 export async function POST(request: Request) {
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
     }
 
     const nowIso = new Date().toISOString();
-    const { procedureId, action } = parsed.data;
+    const { procedureId, action, amountPaid } = parsed.data;
 
     const payload: Record<string, unknown> = {
       procedure_id: procedureId,
@@ -53,6 +54,44 @@ export async function POST(request: Request) {
         },
         { status: 500 },
       );
+    }
+
+    if (action === "retired") {
+      const { data: procedure, error: procedureFetchError } = await supabase
+        .from("client_procedures")
+        .select("id, total_amount, amount_paid")
+        .eq("id", procedureId)
+        .single();
+
+      if (procedureFetchError || !procedure) {
+        console.error("POST /api/avisos/retiro/estado procedure fetch error:", procedureFetchError);
+        return NextResponse.json(
+          { error: "No se pudo obtener el tramite para actualizar el pago." },
+          { status: 500 },
+        );
+      }
+
+      const previousPaid = Number(procedure.amount_paid ?? 0);
+      const total = Number(procedure.total_amount ?? 0);
+      const paidDelta = Number(amountPaid ?? 0);
+      const newAmountPaid = previousPaid + paidDelta;
+      const isPaid = total > 0 ? newAmountPaid >= total : newAmountPaid > 0;
+
+      const { error: procedureUpdateError } = await supabase
+        .from("client_procedures")
+        .update({
+          amount_paid: newAmountPaid,
+          paid: isPaid,
+        })
+        .eq("id", procedureId);
+
+      if (procedureUpdateError) {
+        console.error("POST /api/avisos/retiro/estado procedure update error:", procedureUpdateError);
+        return NextResponse.json(
+          { error: "No se pudo actualizar el monto abonado del tramite." },
+          { status: 500 },
+        );
+      }
     }
 
     return NextResponse.json({ data: { ok: true } });

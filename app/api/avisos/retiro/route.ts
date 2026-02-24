@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from("client_procedures")
       .select(
-        "id, client_id, created_at, clients(id, first_name, last_name, phone), procedure_types(id, code, display_name)",
+        "id, client_id, created_at, paid, total_amount, amount_paid, clients(id, first_name, last_name, phone), procedure_types(id, code, display_name)",
         { count: "exact" },
       )
       .in("procedure_type_id", targetProcedureTypeIds)
@@ -159,6 +159,9 @@ export async function GET(request: Request) {
       return {
         id: row.id,
         createdAt: row.created_at,
+        paid: row.paid,
+        totalAmount: row.total_amount,
+        amountPaid: row.amount_paid,
         status: statusData?.status ?? "PENDIENTE_RECEPCION",
         receivedAt: statusData?.receivedAt ?? null,
         notifiedAt: statusData?.notifiedAt ?? null,

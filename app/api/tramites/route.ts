@@ -53,9 +53,9 @@ export async function GET(request: Request) {
     }
 
     const fullSelect =
-      "id, created_at, paid, total_amount, amount_paid, notes, clients(id, first_name, last_name, phone), procedure_types(id, display_name), distributors(id, name)";
+      "id, created_at, paid, total_amount, amount_paid, notes, clients(id, first_name, last_name, phone), procedure_types(id, code, display_name), distributors(id, name)";
     const fallbackSelect =
-      "id, created_at, notes, clients(id, first_name, last_name, phone), procedure_types(id, display_name), distributors(id, name)";
+      "id, created_at, notes, clients(id, first_name, last_name, phone), procedure_types(id, code, display_name), distributors(id, name)";
 
     let query = supabase
       .from("client_procedures")
@@ -201,6 +201,7 @@ export async function GET(request: Request) {
         procedureType: row.procedure_types
           ? {
               id: row.procedure_types.id,
+              code: row.procedure_types.code,
               displayName: row.procedure_types.display_name,
             }
           : null,

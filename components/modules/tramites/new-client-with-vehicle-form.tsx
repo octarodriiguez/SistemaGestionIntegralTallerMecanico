@@ -29,7 +29,6 @@ const initialForm = {
   brand: "",
   model: "",
   domain: "",
-  year: "",
 };
 
 const FIXED_TOTAL_BY_CODE: Record<string, number> = {
@@ -117,7 +116,6 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
           brand: form.brand,
           model: form.model,
           domain: form.domain,
-          year: form.year ? Number(form.year) : undefined,
         },
       };
 
@@ -159,14 +157,14 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
           <input
             required
             value={form.firstName}
-            onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, firstName: e.target.value.toUpperCase() }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             placeholder="Apellido"
           />
           <input
             required
             value={form.lastName}
-            onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, lastName: e.target.value.toUpperCase() }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             placeholder="Nombre"
           />
@@ -188,14 +186,14 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
           <input
             required
             value={form.brand}
-            onChange={(e) => setForm((prev) => ({ ...prev, brand: e.target.value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, brand: e.target.value.toUpperCase() }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             placeholder="Marca"
           />
           <input
             required
             value={form.model}
-            onChange={(e) => setForm((prev) => ({ ...prev, model: e.target.value }))}
+            onChange={(e) => setForm((prev) => ({ ...prev, model: e.target.value.toUpperCase() }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             placeholder="Modelo"
           />
@@ -207,12 +205,6 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
             }
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm uppercase outline-none focus:border-slate-400"
             placeholder="Dominio"
-          />
-          <input
-            value={form.year}
-            onChange={(e) => setForm((prev) => ({ ...prev, year: e.target.value }))}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            placeholder="Anio"
           />
         </div>
       </div>
@@ -285,7 +277,7 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
         </p>
         <textarea
           value={form.procedureNotes}
-          onChange={(e) => setForm((prev) => ({ ...prev, procedureNotes: e.target.value }))}
+          onChange={(e) => setForm((prev) => ({ ...prev, procedureNotes: e.target.value.toUpperCase() }))}
           className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
           placeholder="Detalle de lo realizado (opcional)"
         />

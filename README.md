@@ -171,3 +171,10 @@ Para consultas sobre el proyecto, contactar al equipo de desarrollo.
 **Versión:** 0.1.0  
 **Estado:** En desarrollo - Fase 1  
 **Última actualización:** Febrero 2026
+
+## Documentacion Operativa Nueva
+
+- `AVISOS.md`: flujo completo de avisos y retiro de tramites.
+- `AUTH_ROLES.md`: autenticacion, roles, permisos y pendientes de oficina (WINPEC).
+  - Login actual: `usuario + contraseña` (no email).
+  - Usuarios iniciales: `ofi_admin / 1234` y `admin / 1234`.

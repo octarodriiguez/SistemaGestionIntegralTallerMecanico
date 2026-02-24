@@ -176,3 +176,25 @@ Filtros en Retiro:
   - plantillas de WhatsApp personalizadas,
   - filtros por estado,
   - auditoria de usuario que realiza cada accion.
+
+---
+
+## Relacion con Pendientes de Oficina (WINPEC)
+
+Aunque este documento es de `Avisos`, se agrego un flujo complementario en `Tramites`:
+
+- Estado tecnico: `procedure_office_status`
+- Estado inicial esperado para nuevos tramites: `PENDIENTE_CARGA`
+- Estado luego de carga administrativa: `CARGADO_WINPEC`
+
+### Notificacion visual
+
+En la sidebar del sistema:
+- el modulo `Tramites` muestra un badge con cantidad pendiente,
+- visible para rol `OFICINA`,
+- alimentado por `GET /api/tramites/oficina/pending-count`.
+
+### Script de normalizacion inicial
+
+Para dejar el historico como "ya cargado" y empezar con pendientes nuevos:
+- ejecutar `scripts/sql/2026-02-23_office_mark_all_loaded.sql`.

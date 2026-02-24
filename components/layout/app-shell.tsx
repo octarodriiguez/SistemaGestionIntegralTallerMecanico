@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { usePathname } from "next/navigation";
-import { appModules } from "@/lib/modules";
+import { usePathname, useRouter } from "next/navigation";
+import { AppRole, getModulesByRole } from "@/lib/modules";
+import { Button } from "@/components/ui/button";
 
 type AppShellProps = {
   sectionLabel: string;
@@ -24,6 +25,62 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [role, setRole] = useState<AppRole | null>(null);
+  const [fullName, setFullName] = useState<string>("");
+  const [pendingOfficeCount, setPendingOfficeCount] = useState<number>(0);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        const json = await res.json();
+        if (!mounted || !res.ok || !json.data) return;
+        setRole(json.data.role as AppRole);
+        setFullName(json.data.fullName ?? "");
+      } catch {
+        // No-op: middleware ya protege navegacion.
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (role !== "OFICINA") {
+      setPendingOfficeCount(0);
+      return;
+    }
+
+    let mounted = true;
+    async function fetchPendingCount() {
+      try {
+        const res = await fetch("/api/tramites/oficina/pending-count", { cache: "no-store" });
+        const json = await res.json();
+        if (!mounted || !res.ok) return;
+        setPendingOfficeCount(Number(json?.data?.pending ?? 0));
+      } catch {
+        if (!mounted) return;
+      }
+    }
+
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [role]);
+
+  const modules = useMemo(() => getModulesByRole(role), [role]);
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 lg:h-dvh lg:overflow-hidden">
@@ -37,10 +94,26 @@ export function AppShell({
               Sistema de Gestion
             </h1>
             <p className="mt-2 text-sm text-slate-600">Accesos del sistema.</p>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+                Usuario
+              </p>
+              <p className="truncate text-xs font-medium text-slate-800">
+                {fullName || "..."}
+              </p>
+              <p className="text-[11px] text-slate-600">{role || "-"}</p>
+              <Button
+                variant="outline"
+                className="mt-2 h-7 w-full text-xs"
+                onClick={handleLogout}
+              >
+                Cerrar sesion
+              </Button>
+            </div>
           </div>
 
           <nav className="space-y-2 lg:max-h-[calc(100dvh-235px)] lg:overflow-auto">
-            {appModules.map((module) => {
+            {modules.map((module) => {
               const isActive =
                 pathname === module.href || pathname.startsWith(`${module.href}/`);
 
@@ -56,7 +129,14 @@ export function AppShell({
                 >
                   <span className="flex items-center gap-3">
                     <module.icon className="h-4 w-4" />
-                    <span className="text-sm font-medium">{module.title}</span>
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      {module.title}
+                      {module.key === "tramites" && role === "OFICINA" && pendingOfficeCount > 0 ? (
+                        <span className="inline-flex min-w-5 items-center justify-center rounded-full border border-red-200 bg-red-100 px-1.5 py-[1px] text-[10px] font-semibold leading-3 text-red-700">
+                          {pendingOfficeCount}
+                        </span>
+                      ) : null}
+                    </span>
                   </span>
                   <ChevronRight className="h-4 w-4 opacity-70" />
                 </Link>
