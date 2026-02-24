@@ -66,6 +66,8 @@ export function OfficePendingPanel() {
     total: 0,
     totalPages: 1,
   });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [savingBatch, setSavingBatch] = useState(false);
 
   async function fetchPending({
     query = search,
@@ -94,6 +96,7 @@ export function OfficePendingPanel() {
       }
 
       setRows(json.data ?? []);
+      setSelectedIds([]);
       setPagination(
         json.pagination ?? { page: 1, pageSize: 20, total: 0, totalPages: 1 },
       );
@@ -111,12 +114,38 @@ export function OfficePendingPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
-  async function markWinpec(procedureId: string) {
+  function toggleSelected(procedureId: string) {
+    setSelectedIds((prev) =>
+      prev.includes(procedureId)
+        ? prev.filter((id) => id !== procedureId)
+        : [...prev, procedureId],
+    );
+  }
+
+  function toggleSelectAllCurrentPage() {
+    const selectableIds = rows
+      .filter((row) => row.status !== "CARGADO_WINPEC")
+      .map((row) => row.id);
+
+    const allSelected =
+      selectableIds.length > 0 && selectableIds.every((id) => selectedIds.includes(id));
+
+    if (allSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !selectableIds.includes(id)));
+      return;
+    }
+
+    setSelectedIds((prev) => Array.from(new Set([...prev, ...selectableIds])));
+  }
+
+  async function applyMarkedWinpec() {
+    if (selectedIds.length === 0) return;
+    setSavingBatch(true);
     try {
       const res = await fetch("/api/tramites/oficina", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ procedureId, action: "mark_winpec" }),
+        body: JSON.stringify({ procedureIds: selectedIds, action: "mark_winpec" }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -124,16 +153,18 @@ export function OfficePendingPanel() {
         throw new Error((json.error ?? "No se pudo actualizar estado.") + detail);
       }
 
-      toast.success("Marcado como cargado en WINPEC.");
+      toast.success(`Marcados ${json?.data?.updated ?? selectedIds.length} como cargados en WINPEC.`);
       await fetchPending({ page: pagination.page, query: search, nextStatus: status });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Error al actualizar estado.");
+    } finally {
+      setSavingBatch(false);
     }
   }
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_220px_120px]">
+      <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_220px_120px_auto]">
         <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500">
           <Search className="h-4 w-4" />
           <input
@@ -162,13 +193,34 @@ export function OfficePendingPanel() {
         >
           Buscar
         </Button>
+
+        <Button
+          onClick={applyMarkedWinpec}
+          disabled={selectedIds.length === 0 || savingBatch}
+          className="rounded-xl bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-60"
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          {savingBatch ? "Guardando..." : `Cargar marcadas (${selectedIds.length})`}
+        </Button>
       </div>
 
       <div className="rounded-xl border border-slate-200">
         <table className="w-full table-fixed text-xs">
           <thead className="bg-slate-100 text-left text-slate-600">
             <tr>
-              <th className="w-[18%] px-3 py-2.5 font-medium">Cliente</th>
+              <th className="w-[5%] px-3 py-2.5 font-medium">
+                <input
+                  type="checkbox"
+                  onChange={toggleSelectAllCurrentPage}
+                  checked={
+                    rows.filter((row) => row.status !== "CARGADO_WINPEC").length > 0 &&
+                    rows
+                      .filter((row) => row.status !== "CARGADO_WINPEC")
+                      .every((row) => selectedIds.includes(row.id))
+                  }
+                />
+              </th>
+              <th className="w-[16%] px-3 py-2.5 font-medium">Cliente</th>
               <th className="w-[10%] px-3 py-2.5 font-medium">Telefono</th>
               <th className="w-[9%] px-3 py-2.5 font-medium">Dominio</th>
               <th className="w-[16%] px-3 py-2.5 font-medium">Vehiculo</th>
@@ -176,25 +228,36 @@ export function OfficePendingPanel() {
               <th className="w-[14%] px-3 py-2.5 font-medium">Distribuidora</th>
               <th className="w-[8%] px-3 py-2.5 font-medium">F. alta</th>
               <th className="w-[8%] px-3 py-2.5 font-medium">Estado</th>
-              <th className="w-[11%] px-3 py-2.5 font-medium">Accion</th>
+              <th className="w-[8%] px-3 py-2.5 font-medium">Marcado</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                   Cargando pendientes...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                   No hay registros para este filtro.
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="border-t border-slate-100">
+                <tr
+                  key={row.id}
+                  className={`border-t border-slate-100 ${selectedIds.includes(row.id) ? "bg-slate-50" : ""}`}
+                >
+                  <td className="px-3 py-2.5 text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(row.id)}
+                      disabled={row.status === "CARGADO_WINPEC"}
+                      onChange={() => toggleSelected(row.id)}
+                    />
+                  </td>
                   <td className="px-3 py-2.5 text-slate-800">
                     <div className="truncate font-medium">
                       {`${row.client?.lastName || "-"}, ${row.client?.firstName || "-"}`}
@@ -224,16 +287,7 @@ export function OfficePendingPanel() {
                     </span>
                   </td>
                   <td className="px-3 py-2.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => markWinpec(row.id)}
-                      disabled={row.status === "CARGADO_WINPEC"}
-                      className="h-7 gap-1 px-2 text-[10px]"
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      WINPEC
-                    </Button>
+                    {selectedIds.includes(row.id) ? "SI" : "-"}
                   </td>
                 </tr>
               ))

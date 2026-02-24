@@ -25,6 +25,15 @@ const createClientSchema = z.object({
     }),
 });
 
+const updateClientSchema = z.object({
+  clientId: z.string().uuid("clientId invalido."),
+  firstName: z.string().trim().min(2, "El nombre es obligatorio."),
+  lastName: z.string().trim().min(2, "El apellido es obligatorio."),
+  phone: z.string().trim().min(6, "El telefono es obligatorio."),
+  address: z.string().trim().optional().or(z.literal("")),
+  notes: z.string().trim().optional().or(z.literal("")),
+});
+
 function normalizeDomain(domain: string) {
   return domain.toUpperCase().replace(/\s+/g, "");
 }
@@ -289,7 +298,35 @@ export async function POST(request: Request) {
           { status: 500 },
         );
       }
-      client = existingClient;
+      const { data: updatedExistingClient, error: updateExistingClientError } = await supabaseServer
+        .from("clients")
+        .update({
+          first_name: payload.firstName.toUpperCase(),
+          last_name: payload.lastName.toUpperCase(),
+          phone: payload.phone,
+          address: payload.address || existingClient.address || null,
+          notes: payload.notes
+            ? payload.notes.toUpperCase()
+            : existingClient.notes || null,
+        })
+        .eq("id", targetClientId)
+        .select(
+          "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
+        )
+        .single();
+
+      if (updateExistingClientError || !updatedExistingClient) {
+        console.error(
+          "POST /api/clientes existing client update error:",
+          updateExistingClientError,
+        );
+        return NextResponse.json(
+          { error: "No se pudo actualizar los datos del cliente existente." },
+          { status: 500 },
+        );
+      }
+
+      client = updatedExistingClient;
     } else {
       const { data: createdClient, error: clientError } = await supabaseServer
         .from("clients")
@@ -438,6 +475,65 @@ export async function POST(request: Request) {
     console.error("POST /api/clientes error:", error);
     return NextResponse.json(
       { error: "No se pudo crear el cliente." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const supabaseServer = getSupabaseServerClient();
+    const json = await request.json();
+    const parsed = updateClientSchema.safeParse(json);
+
+    if (!parsed.success) {
+      const firstIssue = parsed.error.issues[0]?.message;
+      return NextResponse.json(
+        {
+          error: firstIssue || "Datos invalidos.",
+          details: parsed.error.flatten(),
+        },
+        { status: 400 },
+      );
+    }
+
+    const payload = parsed.data;
+
+    const { data: updatedClient, error } = await supabaseServer
+      .from("clients")
+      .update({
+        first_name: payload.firstName.toUpperCase(),
+        last_name: payload.lastName.toUpperCase(),
+        phone: payload.phone,
+        address: payload.address || null,
+        notes: payload.notes ? payload.notes.toUpperCase() : null,
+      })
+      .eq("id", payload.clientId)
+      .select(
+        "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
+      )
+      .maybeSingle();
+
+    if (error) {
+      console.error("PATCH /api/clientes error:", error);
+      return NextResponse.json(
+        { error: "No se pudo actualizar el cliente.", details: error.message },
+        { status: 500 },
+      );
+    }
+
+    if (!updatedClient) {
+      return NextResponse.json(
+        { error: "Cliente no encontrado." },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ data: mapClient({ ...updatedClient, vehicles: [], client_procedures: [] }) });
+  } catch (error) {
+    console.error("PATCH /api/clientes error:", error);
+    return NextResponse.json(
+      { error: "No se pudo actualizar el cliente." },
       { status: 500 },
     );
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MessageCircle, Plus, Search, X } from "lucide-react";
+import { MessageCircle, Pencil, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppShell } from "@/components/layout/app-shell";
@@ -15,6 +15,7 @@ type ProcedureRow = {
   totalAmount: number | null;
   amountPaid: number | null;
   client: {
+    id: string;
     firstName: string;
     lastName: string;
     phone: string;
@@ -78,6 +79,16 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [openCreateModal, setOpenCreateModal] = useState(false);
+  const [openEditModal, setOpenEditModal] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState({
+    clientId: "",
+    firstName: "",
+    lastName: "",
+    phone: "",
+    address: "",
+    notes: "",
+  });
   const [showAll, setShowAll] = useState(false);
   const [dateFilter, setDateFilter] = useState(todayString());
   const [pagination, setPagination] = useState<Pagination>({
@@ -147,6 +158,43 @@ export default function ClientesPage() {
   async function handleCreateSuccess() {
     setOpenCreateModal(false);
     await fetchProcedures({ page: 1 });
+  }
+
+  function openEditClient(row: ProcedureRow) {
+    if (!row.client?.id) return;
+    setEditForm({
+      clientId: row.client.id,
+      firstName: row.client.firstName ?? "",
+      lastName: row.client.lastName ?? "",
+      phone: row.client.phone ?? "",
+      address: "",
+      notes: "",
+    });
+    setOpenEditModal(true);
+  }
+
+  async function handleSaveClientEdit() {
+    if (!editForm.clientId) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch("/api/clientes", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? "No se pudo actualizar el cliente.");
+      }
+
+      toast.success("Cliente actualizado.");
+      setOpenEditModal(false);
+      await fetchProcedures({ page: pagination.page, query: search });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al actualizar cliente.");
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   return (
@@ -244,8 +292,20 @@ export default function ClientesPage() {
                         <div className="truncate font-medium text-slate-800">
                           {`${row.client?.lastName || "-"}, ${row.client?.firstName || "-"}`}
                         </div>
-                        <div className="truncate text-[11px] text-slate-600">
-                          {row.client?.phone || "-"}
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-[11px] text-slate-600">
+                            {row.client?.phone || "-"}
+                          </span>
+                          {row.client?.id ? (
+                            <button
+                              type="button"
+                              onClick={() => openEditClient(row)}
+                              className="inline-flex items-center rounded-lg border border-slate-300 bg-slate-50 px-1.5 py-1 text-slate-700 transition hover:bg-slate-100"
+                              title="Editar cliente"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                       <td className="px-3 py-2.5 text-slate-700">
@@ -349,6 +409,74 @@ export default function ClientesPage() {
             </div>
             <div className="h-[calc(92vh-78px)] overflow-auto p-4">
               <NewClientWithVehicleForm onSuccess={handleCreateSuccess} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {openEditModal ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-2 pt-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Editar cliente</h3>
+                <p className="text-sm text-slate-600">Actualiza datos de contacto.</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setOpenEditModal(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  value={editForm.firstName}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, firstName: e.target.value.toUpperCase() }))
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  placeholder="Nombre"
+                />
+                <input
+                  value={editForm.lastName}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, lastName: e.target.value.toUpperCase() }))
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  placeholder="Apellido"
+                />
+                <input
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  placeholder="Telefono"
+                />
+                <input
+                  value={editForm.address}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                  placeholder="Direccion (opcional)"
+                />
+              </div>
+              <textarea
+                value={editForm.notes}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, notes: e.target.value.toUpperCase() }))
+                }
+                className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                placeholder="Notas (opcional)"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setOpenEditModal(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSaveClientEdit}
+                  disabled={savingEdit}
+                  className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                >
+                  {savingEdit ? "Guardando..." : "Guardar cambios"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

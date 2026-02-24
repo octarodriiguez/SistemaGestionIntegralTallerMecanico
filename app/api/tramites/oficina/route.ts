@@ -2,10 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
-const updateSchema = z.object({
-  procedureId: z.string().uuid("procedureId invalido."),
-  action: z.literal("mark_winpec"),
-});
+const updateSchema = z
+  .object({
+    action: z.literal("mark_winpec"),
+    procedureId: z.string().uuid("procedureId invalido.").optional(),
+    procedureIds: z.array(z.string().uuid("procedureId invalido.")).min(1).optional(),
+  })
+  .refine((value) => Boolean(value.procedureId) || Boolean(value.procedureIds?.length), {
+    message: "Debes enviar procedureId o procedureIds.",
+    path: ["procedureId"],
+  });
 
 type OfficeStatus = "PENDIENTE_CARGA" | "CARGADO_WINPEC";
 
@@ -268,46 +274,57 @@ export async function POST(request: Request) {
       );
     }
 
-    const { procedureId } = parsed.data;
+    const procedureIds = Array.from(
+      new Set(
+        parsed.data.procedureIds?.length
+          ? parsed.data.procedureIds
+          : parsed.data.procedureId
+            ? [parsed.data.procedureId]
+            : [],
+      ),
+    );
 
-    const { data: procedure, error: procedureError } = await supabase
+    const { data: procedures, error: procedureError } = await supabase
       .from("client_procedures")
       .select("id, procedure_type_id")
-      .eq("id", procedureId)
-      .maybeSingle();
+      .in("id", procedureIds);
 
-    if (procedureError || !procedure) {
+    if (procedureError || !procedures || procedures.length === 0) {
       console.error("POST /api/tramites/oficina procedure error:", trace, procedureError);
       return NextResponse.json({ error: "Tramite no encontrado." }, { status: 404 });
     }
-    console.info("[tramites/oficina]", trace, "procedure_found", procedure.id);
+    console.info("[tramites/oficina]", trace, "procedures_found", procedures.length);
 
-    const { data: procedureType, error: typeError } = await supabase
+    const procedureTypeIds = Array.from(new Set(procedures.map((p) => p.procedure_type_id)));
+    const { data: procedureTypes, error: typeError } = await supabase
       .from("procedure_types")
-      .select("code")
-      .eq("id", procedure.procedure_type_id)
-      .maybeSingle();
+      .select("id, code")
+      .in("id", procedureTypeIds);
 
     if (typeError) {
       console.error("POST /api/tramites/oficina type error:", trace, typeError);
       return NextResponse.json({ error: "No se pudo validar el tipo de tramite." }, { status: 500 });
     }
 
-    if (procedureType?.code === "REPARACION_VARIA") {
+    const procedureTypeById = new Map((procedureTypes ?? []).map((pt) => [pt.id, pt.code]));
+    const hasReparacionVaria = procedures.some(
+      (procedure) => procedureTypeById.get(procedure.procedure_type_id) === "REPARACION_VARIA",
+    );
+    if (hasReparacionVaria) {
       return NextResponse.json(
         { error: "REPARACION_VARIA no se controla en pendientes de oficina." },
         { status: 400 },
       );
     }
 
-    const { error } = await supabase.from("procedure_office_status").upsert(
-      {
-        procedure_id: procedureId,
-        status: "CARGADO_WINPEC",
-        loaded_to_winpec_at: new Date().toISOString(),
-      },
-      { onConflict: "procedure_id" },
-    );
+    const payload = procedureIds.map((procedureId) => ({
+      procedure_id: procedureId,
+      status: "CARGADO_WINPEC",
+      loaded_to_winpec_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase
+      .from("procedure_office_status")
+      .upsert(payload, { onConflict: "procedure_id" });
 
     if (error) {
       console.error("POST /api/tramites/oficina upsert error:", trace, error);
@@ -322,9 +339,9 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
-    console.info("[tramites/oficina]", trace, "upsert_ok", { procedureId });
+    console.info("[tramites/oficina]", trace, "upsert_ok", { count: procedureIds.length });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, data: { updated: procedureIds.length } });
   } catch (error) {
     console.error("POST /api/tramites/oficina error:", error);
     return NextResponse.json({ error: "No se pudo actualizar estado." }, { status: 500 });
