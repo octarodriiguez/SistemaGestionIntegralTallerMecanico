@@ -37,9 +37,38 @@ const updatePaymentSchema = z.object({
   amountPaid: z.number().min(0, "Monto abonado invalido."),
 });
 
+const updateFullSchema = z.object({
+  mode: z.literal("full"),
+  procedureId: z.string().uuid("procedureId invalido."),
+  clientId: z.string().uuid("clientId invalido."),
+  firstName: z.string().trim().min(2, "Nombre invalido."),
+  lastName: z.string().trim().min(2, "Apellido invalido."),
+  phone: z.string().trim().optional().or(z.literal("")),
+  brand: z.string().trim().min(1, "Marca invalida."),
+  model: z.string().trim().min(1, "Modelo invalido."),
+  domain: z.string().trim().min(1, "Dominio invalido."),
+  procedureTypeId: z.string().uuid("Tipo de tramite invalido."),
+  distributorId: z.string().trim().optional().or(z.literal("")),
+  procedureNotes: z.string().trim().optional().or(z.literal("")),
+  totalAmount: z.number().min(0, "Total invalido."),
+  amountPaid: z.number().min(0, "Monto abonado invalido."),
+});
+
 const deleteProcedureSchema = z.object({
   procedureId: z.string().uuid("procedureId invalido."),
 });
+
+function normalizePhoneForStorage(raw: string | null | undefined): string | null {
+  const text = (raw ?? "").trim();
+  if (!text) return null;
+  const digits = text.replace(/\D/g, "");
+  if (!digits || digits === "0") return null;
+  return digits;
+}
+
+function normalizeDomain(domain: string) {
+  return domain.toUpperCase().replace(/\s+/g, "");
+}
 
 export async function GET(request: Request) {
   try {
@@ -271,16 +300,122 @@ export async function PATCH(request: Request) {
   try {
     const supabase = getSupabaseServerClient();
     const json = await request.json();
-    const parsed = updatePaymentSchema.safeParse(json);
+    const fullParsed = updateFullSchema.safeParse(json);
 
-    if (!parsed.success) {
+    if (fullParsed.success) {
+      const payload = fullParsed.data;
+      if (payload.amountPaid > payload.totalAmount) {
+        return NextResponse.json(
+          { error: "El monto abonado no puede ser mayor al total." },
+          { status: 400 },
+        );
+      }
+
+      const domain = normalizeDomain(payload.domain);
+      const phone = normalizePhoneForStorage(payload.phone);
+
+      const { error: clientError } = await supabase
+        .from("clients")
+        .update({
+          first_name: payload.firstName.toUpperCase(),
+          last_name: payload.lastName.toUpperCase(),
+          phone,
+        })
+        .eq("id", payload.clientId);
+
+      if (clientError) {
+        return NextResponse.json(
+          { error: "No se pudo actualizar cliente.", details: clientError.message },
+          { status: 500 },
+        );
+      }
+
+      const { data: procedureRow, error: procedureRowError } = await supabase
+        .from("client_procedures")
+        .select("id, client_id, notes")
+        .eq("id", payload.procedureId)
+        .maybeSingle();
+
+      if (procedureRowError || !procedureRow) {
+        return NextResponse.json({ error: "Tramite no encontrado." }, { status: 404 });
+      }
+
+      const domainFromNotes = extractDomainFromNotes(procedureRow.notes);
+      const { data: vehicles, error: vehiclesError } = await supabase
+        .from("vehicles")
+        .select("id, domain")
+        .eq("client_id", procedureRow.client_id);
+
+      if (vehiclesError) {
+        return NextResponse.json(
+          { error: "No se pudo resolver vehiculo.", details: vehiclesError.message },
+          { status: 500 },
+        );
+      }
+
+      const selectedVehicle =
+        (vehicles ?? []).find((item) =>
+          domainFromNotes
+            ? item.domain?.toUpperCase() === domainFromNotes
+            : false,
+        ) ?? (vehicles ?? [])[0];
+
+      if (!selectedVehicle) {
+        return NextResponse.json({ error: "No se encontro vehiculo a editar." }, { status: 404 });
+      }
+
+      const { error: vehicleError } = await supabase
+        .from("vehicles")
+        .update({
+          brand: payload.brand.toUpperCase(),
+          model: payload.model.toUpperCase(),
+          domain,
+        })
+        .eq("id", selectedVehicle.id);
+
+      if (vehicleError) {
+        return NextResponse.json(
+          { error: "No se pudo actualizar vehiculo.", details: vehicleError.message },
+          { status: 500 },
+        );
+      }
+
+      const notes = payload.procedureNotes
+        ? `[DOMINIO:${domain}] ${payload.procedureNotes.toUpperCase()}`
+        : `[DOMINIO:${domain}]`;
+
+      const { error: procedureError } = await supabase
+        .from("client_procedures")
+        .update({
+          procedure_type_id: payload.procedureTypeId,
+          distributor_id: payload.distributorId || null,
+          notes,
+          total_amount: payload.totalAmount,
+          amount_paid: payload.amountPaid,
+          paid: payload.totalAmount > 0 ? payload.amountPaid >= payload.totalAmount : false,
+        })
+        .eq("id", payload.procedureId);
+
+      if (procedureError) {
+        return NextResponse.json(
+          { error: "No se pudo actualizar tramite.", details: procedureError.message },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
+    const paymentParsed = updatePaymentSchema.safeParse(json);
+
+    if (!paymentParsed.success) {
       return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Datos invalidos." },
+        { error: paymentParsed.error.issues[0]?.message ?? "Datos invalidos." },
         { status: 400 },
       );
     }
 
-    const { procedureId, totalAmount, amountPaid } = parsed.data;
+    const { procedureId, totalAmount, amountPaid } = paymentParsed.data;
     if (amountPaid > totalAmount) {
       return NextResponse.json(
         { error: "El monto abonado no puede ser mayor al total." },

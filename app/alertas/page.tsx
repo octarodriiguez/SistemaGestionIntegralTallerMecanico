@@ -11,6 +11,7 @@ import {
   Search,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import Swal from "sweetalert2";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -311,14 +312,20 @@ export default function AlertasPage() {
       let amountPaid: number | undefined;
       if (action === "retired") {
         const remaining = Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0);
-        const input = window.prompt(
-          `Monto abonado al retirar (saldo actual: ${remaining}):`,
-          remaining > 0 ? String(remaining) : "0",
-        );
-        if (input === null) return;
-        const parsed = Number(input.replace(",", "."));
+        const result = await Swal.fire({
+          title: "Marcar retirado",
+          text: `Monto abonado al retirar (saldo actual: ${remaining})`,
+          input: "text",
+          inputValue: remaining > 0 ? String(remaining) : "0",
+          showCancelButton: true,
+          confirmButtonText: "Confirmar",
+          cancelButtonText: "Cancelar",
+        });
+        if (!result.isConfirmed) return;
+
+        const parsed = Number(String(result.value ?? "").replace(",", "."));
         if (Number.isNaN(parsed) || parsed < 0) {
-          toast.error("Monto invalido.");
+          await Swal.fire({ title: "Error", text: "Monto invalido.", icon: "error" });
           return;
         }
         amountPaid = parsed;
