@@ -37,9 +37,15 @@ const FIXED_TOTAL_BY_CODE: Record<string, number> = {
 };
 
 function getProcedureOptionLabel(item: ProcedureType) {
-  if (item.code === "RENOVACION_OBLEA") return "O";
+  if (item.code === "RENOVACION_OBLEA") return "OBLEA";
   if (item.code === "PRUEBA_HIDRAULICA") return "PH";
   return item.display_name;
+}
+
+function normalizePhoneForPreview(raw: string) {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits || digits === "0") return "SIN TELEFONO";
+  return digits;
 }
 
 type Props = {
@@ -119,6 +125,15 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
         },
       };
 
+      const phonePreview = normalizePhoneForPreview(form.phone);
+      const confirmed = window.confirm(
+        `Se va a guardar este telefono: ${phonePreview}. ¿Confirmar?`,
+      );
+      if (!confirmed) {
+        setSaving(false);
+        return;
+      }
+
       console.log("[tramites] payload alta cliente", payload);
 
       const res = await fetch("/api/clientes", {
@@ -169,11 +184,10 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
             placeholder="Nombre"
           />
           <input
-            required
             value={form.phone}
             onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            placeholder="Telefono"
+            placeholder="Telefono (opcional, 0 para omitir)"
           />
         </div>
       </div>

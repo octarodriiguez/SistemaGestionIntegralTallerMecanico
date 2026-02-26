@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 type AlertRow = {
   id: string;
   createdAt: string;
+  notes?: string | null;
   status: "PENDIENTE_DE_AVISAR" | "AVISADO" | "NO_CORRESPONDE_AVISAR" | string;
   enargasLastOperationDate: string | null;
   client: {
@@ -39,6 +40,7 @@ type AlertRow = {
 type DeliveryRow = {
   id: string;
   createdAt: string;
+  notes?: string | null;
   status: "PENDIENTE_RECEPCION" | "RECIBIDO" | "AVISADO_RETIRO" | "RETIRADO" | string;
   paid: boolean | null;
   totalAmount: number | null;
@@ -111,7 +113,7 @@ function deliveryStatusClass(status: string) {
 }
 
 function procedureLabel(code: string | undefined, displayName: string | undefined) {
-  if (code === "RENOVACION_OBLEA") return "O";
+  if (code === "RENOVACION_OBLEA") return "OBLEA";
   if (code === "PRUEBA_HIDRAULICA") return "PH";
   return displayName || "-";
 }
@@ -137,7 +139,7 @@ function formatAmount(value: number | null | undefined) {
 }
 
 export default function AlertasPage() {
-  const [vencimientosOpen, setVencimientosOpen] = useState(true);
+  const [vencimientosOpen, setVencimientosOpen] = useState(false);
   const [retirosOpen, setRetirosOpen] = useState(true);
 
   const [rows, setRows] = useState<AlertRow[]>([]);
@@ -432,7 +434,7 @@ export default function AlertasPage() {
                 </div>
 
                 <div className="rounded-xl border border-slate-200">
-                  <table className="w-full table-fixed text-xs">
+                  <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
                         <th className="w-[20%] px-3 py-2.5 font-medium">Cliente</th>
@@ -596,7 +598,7 @@ export default function AlertasPage() {
                 </div>
 
                 <div className="rounded-xl border border-slate-200">
-                  <table className="w-full table-fixed text-xs">
+                  <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
                         <th className="w-[16%] px-3 py-2.5 font-medium">Cliente</th>
@@ -610,19 +612,20 @@ export default function AlertasPage() {
                         <th className="w-[7%] px-3 py-2.5 font-medium">Saldo</th>
                         <th className="w-[6%] px-3 py-2.5 font-medium">Pagado</th>
                         <th className="w-[6%] px-3 py-2.5 font-medium">Estado</th>
-                        <th className="w-[17%] px-3 py-2.5 font-medium">Acciones</th>
+                        <th className="w-[13%] px-3 py-2.5 font-medium">Obs</th>
+                        <th className="w-[14%] px-3 py-2.5 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {deliveryLoading ? (
                         <tr>
-                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
                             Cargando retiros...
                           </td>
                         </tr>
                       ) : deliveryRows.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
                             No hay trámites para retiro.
                           </td>
                         </tr>
@@ -678,8 +681,13 @@ export default function AlertasPage() {
                                 {deliveryStatusLabel(row.status)}
                               </span>
                             </td>
+                            <td className="px-3 py-2.5 text-slate-700">
+                              <div className="truncate" title={row.notes || "-"}>
+                                {row.notes || "-"}
+                              </div>
+                            </td>
                             <td className="px-3 py-2.5">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <Button
                                   variant="outline"
                                   size="sm"

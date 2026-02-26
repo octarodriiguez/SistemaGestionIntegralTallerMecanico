@@ -3,6 +3,28 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 const TARGET_CODES = ["RENOVACION_OBLEA", "PRUEBA_HIDRAULICA"];
 
+function extractDomainFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const tagged = notes.match(/\[DOMINIO:([A-Z0-9-]+)\]/i);
+  if (tagged?.[1]) return tagged[1].toUpperCase();
+  const legacy = notes.match(/dominio:\s*([A-Z0-9-]+)/i);
+  if (legacy?.[1]) return legacy[1].toUpperCase();
+  return null;
+}
+
+function resolveVehicle(
+  notes: string | null | undefined,
+  vehicles: { brand: string; model: string; domain: string }[],
+) {
+  if (!vehicles.length) return null;
+  const domainFromNotes = extractDomainFromNotes(notes);
+  if (!domainFromNotes) return vehicles[0];
+  return (
+    vehicles.find((item) => (item.domain || "").toUpperCase() === domainFromNotes) ??
+    vehicles[0]
+  );
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = getSupabaseServerClient();
@@ -59,7 +81,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from("client_procedures")
       .select(
-        "id, client_id, created_at, paid, total_amount, amount_paid, clients(id, first_name, last_name, phone), procedure_types(id, code, display_name)",
+        "id, client_id, created_at, notes, paid, total_amount, amount_paid, clients(id, first_name, last_name, phone), procedure_types(id, code, display_name)",
         { count: "exact" },
       )
       .in("procedure_type_id", targetProcedureTypeIds)
@@ -154,11 +176,14 @@ export async function GET(request: Request) {
 
     const mapped = procedures.map((row: any) => {
       const clientId = row.client_id;
-      const vehicle = clientId ? vehiclesByClient.get(clientId)?.[0] : null;
+      const vehicle = clientId
+        ? resolveVehicle(row.notes, vehiclesByClient.get(clientId) ?? [])
+        : null;
       const statusData = statusesByProcedure.get(row.id);
       return {
         id: row.id,
         createdAt: row.created_at,
+        notes: row.notes,
         paid: row.paid,
         totalAmount: row.total_amount,
         amountPaid: row.amount_paid,

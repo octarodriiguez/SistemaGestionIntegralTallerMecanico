@@ -48,7 +48,7 @@ function formatDate(value: string | null | undefined) {
 }
 
 function procedureLabel(code: string | undefined, displayName: string | undefined) {
-  if (code === "RENOVACION_OBLEA") return "O";
+  if (code === "RENOVACION_OBLEA") return "OBLEA";
   if (code === "PRUEBA_HIDRAULICA") return "PH";
   return displayName || "-";
 }
@@ -205,7 +205,7 @@ export function OfficePendingPanel() {
       </div>
 
       <div className="rounded-xl border border-slate-200">
-        <table className="w-full table-fixed text-xs">
+        <table className="w-full table-fixed text-sm">
           <thead className="bg-slate-100 text-left text-slate-600">
             <tr>
               <th className="w-[5%] px-3 py-2.5 font-medium">

@@ -15,6 +15,28 @@ const updateSchema = z
 
 type OfficeStatus = "PENDIENTE_CARGA" | "CARGADO_WINPEC";
 
+function extractDomainFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const tagged = notes.match(/\[DOMINIO:([A-Z0-9-]+)\]/i);
+  if (tagged?.[1]) return tagged[1].toUpperCase();
+  const legacy = notes.match(/dominio:\s*([A-Z0-9-]+)/i);
+  if (legacy?.[1]) return legacy[1].toUpperCase();
+  return null;
+}
+
+function resolveVehicle(
+  notes: string | null | undefined,
+  vehicles: { brand: string; model: string; domain: string }[],
+) {
+  if (!vehicles.length) return null;
+  const domainFromNotes = extractDomainFromNotes(notes);
+  if (!domainFromNotes) return vehicles[0];
+  return (
+    vehicles.find((item) => (item.domain || "").toUpperCase() === domainFromNotes) ??
+    vehicles[0]
+  );
+}
+
 function normalizeStatus(raw: string | null | undefined): OfficeStatus {
   return raw === "CARGADO_WINPEC" ? "CARGADO_WINPEC" : "PENDIENTE_CARGA";
 }
@@ -200,7 +222,9 @@ export async function GET(request: Request) {
 
     const mapped = pageRows.map((row: any) => {
       const clientId = row.clients?.id;
-      const firstVehicle = clientId ? vehiclesByClient.get(clientId)?.[0] : null;
+      const firstVehicle = clientId
+        ? resolveVehicle(row.notes, vehiclesByClient.get(clientId) ?? [])
+        : null;
       const rowStatus = statusByProcedure.get(row.id) ?? "PENDIENTE_CARGA";
       return {
         id: row.id,

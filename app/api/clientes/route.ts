@@ -5,7 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 const createClientSchema = z.object({
   firstName: z.string().trim().min(2, "El nombre es obligatorio."),
   lastName: z.string().trim().min(2, "El apellido es obligatorio."),
-  phone: z.string().trim().min(6, "El telefono es obligatorio."),
+  phone: z.string().trim().optional().or(z.literal("")),
   procedureTypeId: z.string().trim().min(1, "El tipo de tramite es obligatorio."),
   distributorId: z.string().trim().optional().or(z.literal("")),
   procedureNotes: z.string().trim().optional(),
@@ -29,13 +29,21 @@ const updateClientSchema = z.object({
   clientId: z.string().uuid("clientId invalido."),
   firstName: z.string().trim().min(2, "El nombre es obligatorio."),
   lastName: z.string().trim().min(2, "El apellido es obligatorio."),
-  phone: z.string().trim().min(6, "El telefono es obligatorio."),
+  phone: z.string().trim().optional().or(z.literal("")),
   address: z.string().trim().optional().or(z.literal("")),
   notes: z.string().trim().optional().or(z.literal("")),
 });
 
 function normalizeDomain(domain: string) {
   return domain.toUpperCase().replace(/\s+/g, "");
+}
+
+function normalizePhoneForStorage(raw: string | null | undefined): string | null {
+  const text = (raw ?? "").trim();
+  if (!text) return null;
+  const digits = text.replace(/\D/g, "");
+  if (!digits || digits === "0") return null;
+  return digits;
 }
 
 function mapClient(row: any) {
@@ -201,6 +209,7 @@ export async function POST(request: Request) {
 
     const payload = parsed.data;
     const vehicle = payload.vehicle;
+    const normalizedPhone = normalizePhoneForStorage(payload.phone);
 
     const { data: procedureType, error: procedureTypeError } = await supabaseServer
       .from("procedure_types")
@@ -303,7 +312,7 @@ export async function POST(request: Request) {
         .update({
           first_name: payload.firstName.toUpperCase(),
           last_name: payload.lastName.toUpperCase(),
-          phone: payload.phone,
+          phone: normalizedPhone,
           address: payload.address || existingClient.address || null,
           notes: payload.notes
             ? payload.notes.toUpperCase()
@@ -333,7 +342,7 @@ export async function POST(request: Request) {
         .insert({
           first_name: payload.firstName.toUpperCase(),
           last_name: payload.lastName.toUpperCase(),
-          phone: payload.phone,
+          phone: normalizedPhone,
           email: payload.totalAmount > 0 ? String(payload.totalAmount) : null,
           address: payload.address || null,
           notes: payload.notes ? payload.notes.toUpperCase() : null,
@@ -389,7 +398,9 @@ export async function POST(request: Request) {
         client_id: targetClientId,
         procedure_type_id: payload.procedureTypeId,
         distributor_id: payload.distributorId || null,
-        notes: payload.procedureNotes ? payload.procedureNotes.toUpperCase() : null,
+        notes: payload.procedureNotes
+          ? `[DOMINIO:${domain}] ${payload.procedureNotes.toUpperCase()}`
+          : `[DOMINIO:${domain}]`,
         paid: payload.paid,
         total_amount: payload.totalAmount,
         amount_paid: payload.amountPaid,
@@ -418,7 +429,9 @@ export async function POST(request: Request) {
           client_id: targetClientId,
           procedure_type_id: payload.procedureTypeId,
           distributor_id: payload.distributorId || null,
-          notes: payload.procedureNotes ? payload.procedureNotes.toUpperCase() : null,
+          notes: payload.procedureNotes
+            ? `[DOMINIO:${domain}] ${payload.procedureNotes.toUpperCase()}`
+            : `[DOMINIO:${domain}]`,
           total_amount: payload.totalAmount,
         })
         .select("id")
@@ -504,7 +517,7 @@ export async function PATCH(request: Request) {
       .update({
         first_name: payload.firstName.toUpperCase(),
         last_name: payload.lastName.toUpperCase(),
-        phone: payload.phone,
+        phone: normalizePhoneForStorage(payload.phone),
         address: payload.address || null,
         notes: payload.notes ? payload.notes.toUpperCase() : null,
       })

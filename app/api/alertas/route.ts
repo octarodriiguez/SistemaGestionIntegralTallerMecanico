@@ -3,6 +3,28 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 const TARGET_CODES = ["RENOVACION_OBLEA", "PRUEBA_HIDRAULICA"];
 
+function extractDomainFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const tagged = notes.match(/\[DOMINIO:([A-Z0-9-]+)\]/i);
+  if (tagged?.[1]) return tagged[1].toUpperCase();
+  const legacy = notes.match(/dominio:\s*([A-Z0-9-]+)/i);
+  if (legacy?.[1]) return legacy[1].toUpperCase();
+  return null;
+}
+
+function resolveVehicle(
+  notes: string | null | undefined,
+  vehicles: { brand: string; model: string; domain: string }[],
+) {
+  if (!vehicles.length) return null;
+  const domainFromNotes = extractDomainFromNotes(notes);
+  if (!domainFromNotes) return vehicles[0];
+  return (
+    vehicles.find((item) => (item.domain || "").toUpperCase() === domainFromNotes) ??
+    vehicles[0]
+  );
+}
+
 function getMonthRange(date: string) {
   const [yearText, monthText] = date.slice(0, 7).split("-");
   const year = Number(yearText);
@@ -173,7 +195,9 @@ export async function GET(request: Request) {
 
     let mapped = procedures.map((row: any) => {
       const clientId = row.client_id;
-      const vehicle = clientId ? vehiclesByClient.get(clientId)?.[0] : null;
+      const vehicle = clientId
+        ? resolveVehicle(row.notes, vehiclesByClient.get(clientId) ?? [])
+        : null;
       const statusData = statusesByProcedure.get(row.id);
       return {
         id: row.id,

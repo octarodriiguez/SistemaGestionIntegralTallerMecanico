@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { z } from "zod";
 
 function getDateRange(date: string) {
   const start = new Date(`${date}T00:00:00.000`);
@@ -7,6 +8,38 @@ function getDateRange(date: string) {
   end.setDate(end.getDate() + 1);
   return { start: start.toISOString(), end: end.toISOString() };
 }
+
+function extractDomainFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const tagged = notes.match(/\[DOMINIO:([A-Z0-9-]+)\]/i);
+  if (tagged?.[1]) return tagged[1].toUpperCase();
+  const legacy = notes.match(/dominio:\s*([A-Z0-9-]+)/i);
+  if (legacy?.[1]) return legacy[1].toUpperCase();
+  return null;
+}
+
+function resolveVehicle(
+  notes: string | null | undefined,
+  vehicles: { brand: string; model: string; domain: string }[],
+) {
+  if (!vehicles.length) return null;
+  const domainFromNotes = extractDomainFromNotes(notes);
+  if (!domainFromNotes) return vehicles[0];
+  return (
+    vehicles.find((item) => (item.domain || "").toUpperCase() === domainFromNotes) ??
+    vehicles[0]
+  );
+}
+
+const updatePaymentSchema = z.object({
+  procedureId: z.string().uuid("procedureId invalido."),
+  totalAmount: z.number().min(0, "Total invalido."),
+  amountPaid: z.number().min(0, "Monto abonado invalido."),
+});
+
+const deleteProcedureSchema = z.object({
+  procedureId: z.string().uuid("procedureId invalido."),
+});
 
 export async function GET(request: Request) {
   try {
@@ -175,7 +208,9 @@ export async function GET(request: Request) {
 
     const mapped = procedures.map((row: any) => {
       const clientId = row.clients?.id;
-      const firstVehicle = clientId ? vehiclesByClient.get(clientId)?.[0] : null;
+      const firstVehicle = clientId
+        ? resolveVehicle(row.notes, vehiclesByClient.get(clientId) ?? [])
+        : null;
       return {
         id: row.id,
         createdAt: row.created_at,
@@ -227,6 +262,94 @@ export async function GET(request: Request) {
     console.error("GET /api/tramites error:", error);
     return NextResponse.json(
       { error: "No se pudieron obtener los tramites." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const supabase = getSupabaseServerClient();
+    const json = await request.json();
+    const parsed = updatePaymentSchema.safeParse(json);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Datos invalidos." },
+        { status: 400 },
+      );
+    }
+
+    const { procedureId, totalAmount, amountPaid } = parsed.data;
+    if (amountPaid > totalAmount) {
+      return NextResponse.json(
+        { error: "El monto abonado no puede ser mayor al total." },
+        { status: 400 },
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("client_procedures")
+      .update({
+        total_amount: totalAmount,
+        amount_paid: amountPaid,
+        paid: totalAmount > 0 ? amountPaid >= totalAmount : false,
+      })
+      .eq("id", procedureId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json(
+        { error: "No se pudo actualizar el pago.", details: error.message },
+        { status: 500 },
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json({ error: "Tramite no encontrado." }, { status: 404 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("PATCH /api/tramites error:", error);
+    return NextResponse.json(
+      { error: "No se pudo actualizar el pago." },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const supabase = getSupabaseServerClient();
+    const json = await request.json();
+    const parsed = deleteProcedureSchema.safeParse(json);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Datos invalidos." },
+        { status: 400 },
+      );
+    }
+
+    const { error } = await supabase
+      .from("client_procedures")
+      .delete()
+      .eq("id", parsed.data.procedureId);
+
+    if (error) {
+      return NextResponse.json(
+        { error: "No se pudo eliminar el tramite.", details: error.message },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("DELETE /api/tramites error:", error);
+    return NextResponse.json(
+      { error: "No se pudo eliminar el tramite." },
       { status: 500 },
     );
   }
