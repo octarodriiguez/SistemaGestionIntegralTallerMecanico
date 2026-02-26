@@ -93,9 +93,12 @@ function formatAmount(value: number | null | undefined) {
   });
 }
 
-function stripDomainTag(notes: string | null | undefined) {
+function stripMetaTags(notes: string | null | undefined) {
   if (!notes) return "";
-  return notes.replace(/\[DOMINIO:[^\]]+\]\s*/gi, "").trim();
+  return notes
+    .replace(/\[DOMINIO:[^\]]+\]/gi, "")
+    .replace(/\[TEL:[^\]]+\]/gi, "")
+    .trim();
 }
 
 export default function ClientesPage() {
@@ -130,6 +133,9 @@ export default function ClientesPage() {
     total: 0,
     totalPages: 1,
   });
+  const [retireModalOpen, setRetireModalOpen] = useState(false);
+  const [retireProcedureId, setRetireProcedureId] = useState("");
+  const [retireAmountInput, setRetireAmountInput] = useState("0");
 
   const activeDate = useMemo(() => (showAll ? "" : dateFilter), [showAll, dateFilter]);
 
@@ -223,7 +229,7 @@ export default function ClientesPage() {
       distributorId: row.distributor?.id ?? "",
       totalAmount: String(row.totalAmount ?? 0),
       amountPaid: String(row.amountPaid ?? 0),
-      procedureNotes: stripDomainTag(row.notes),
+      procedureNotes: stripMetaTags(row.notes),
     });
     setOpenEditModal(true);
   }
@@ -319,20 +325,15 @@ export default function ClientesPage() {
 
   async function handleMarkRetired(row: ProcedureRow) {
     const remaining = Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0);
-    const result = await Swal.fire({
-      title: "Marcar retirado",
-      text: `Monto abonado al retirar (saldo actual: ${remaining})`,
-      input: "text",
-      inputValue: remaining > 0 ? String(remaining) : "0",
-      showCancelButton: true,
-      confirmButtonText: "Confirmar",
-      cancelButtonText: "Cancelar",
-    });
-    if (!result.isConfirmed) return;
+    setRetireProcedureId(row.id);
+    setRetireAmountInput(remaining > 0 ? String(remaining) : "0");
+    setRetireModalOpen(true);
+  }
 
-    const amountPaid = Number(String(result.value ?? "").replace(",", "."));
+  async function confirmMarkRetired() {
+    const amountPaid = Number(String(retireAmountInput ?? "").replace(",", "."));
     if (Number.isNaN(amountPaid) || amountPaid < 0) {
-      await Swal.fire({ title: "Error", text: "Monto invalido.", icon: "error" });
+      toast.error("Monto invalido.");
       return;
     }
 
@@ -340,25 +341,18 @@ export default function ClientesPage() {
       const res = await fetch("/api/avisos/retiro/estado", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ procedureId: row.id, action: "retired", amountPaid }),
+        body: JSON.stringify({ procedureId: retireProcedureId, action: "retired", amountPaid }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "No se pudo marcar retirado.");
 
-      await Swal.fire({
-        title: "Actualizado",
-        text: "Tramite marcado como retirado.",
-        icon: "success",
-        timer: 1200,
-        showConfirmButton: false,
-      });
+      setRetireModalOpen(false);
+      setRetireProcedureId("");
+      setRetireAmountInput("0");
+      toast.success("Tramite marcado como retirado.");
       await fetchProcedures({ page: pagination.page, query: search });
     } catch (error) {
-      await Swal.fire({
-        title: "Error",
-        text: error instanceof Error ? error.message : "Error al marcar retirado.",
-        icon: "error",
-      });
+      toast.error(error instanceof Error ? error.message : "Error al marcar retirado.");
     }
   }
 
@@ -451,17 +445,6 @@ export default function ClientesPage() {
                           </div>
                           <div className="flex items-center gap-1.5">
                             <span className="truncate text-[11px] text-slate-600">{row.client?.phone || "-"}</span>
-                            {row.client?.id ? (
-                              <button
-                                type="button"
-                                onClick={() => openEditRecord(row)}
-                                className="inline-flex items-center rounded-lg border border-slate-300 bg-slate-50 px-2 py-1 text-slate-700 transition hover:bg-slate-100"
-                                title="Editar registro"
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                                <span className="ml-1 text-[11px] font-medium">Editar</span>
-                              </button>
-                            ) : null}
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-slate-700">
@@ -486,8 +469,8 @@ export default function ClientesPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-slate-700">
-                          <div className="truncate" title={row.notes || "-"}>
-                            {row.notes || "-"}
+                          <div className="truncate" title={stripMetaTags(row.notes) || "-"}>
+                            {stripMetaTags(row.notes) || "-"}
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-slate-700">
@@ -504,6 +487,15 @@ export default function ClientesPage() {
                                 <MessageCircle className="h-3.5 w-3.5" />
                               </a>
                             ) : null}
+                            <button
+                              type="button"
+                              onClick={() => openEditRecord(row)}
+                              className="inline-flex items-center rounded-lg border border-slate-300 bg-slate-50 px-2 py-1 text-slate-700 transition hover:bg-slate-100"
+                              title="Editar registro"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              <span className="ml-1 text-[11px] font-medium">Editar</span>
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteProcedure(row.id)}
@@ -614,6 +606,38 @@ export default function ClientesPage() {
                 <Button variant="outline" onClick={() => setOpenEditModal(false)}>Cancelar</Button>
                 <Button onClick={handleSaveRecordEdit} disabled={savingEdit} className="rounded-xl bg-slate-900 text-white hover:bg-slate-800">
                   {savingEdit ? "Guardando..." : "Guardar cambios"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {retireModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-2 pt-16">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Marcar retirado</h3>
+                <p className="text-sm text-slate-600">Ingresa el monto abonado al retirar.</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setRetireModalOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-3 p-4">
+              <input
+                value={retireAmountInput}
+                onChange={(e) => setRetireAmountInput(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                placeholder="Monto abonado"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setRetireModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={confirmMarkRetired} className="rounded-xl bg-slate-900 text-white hover:bg-slate-800">
+                  Confirmar
                 </Button>
               </div>
             </div>

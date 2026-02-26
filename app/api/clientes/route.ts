@@ -46,6 +46,21 @@ function normalizePhoneForStorage(raw: string | null | undefined): string | null
   return digits;
 }
 
+function buildProcedureNotes({
+  domain,
+  phone,
+  procedureNotes,
+}: {
+  domain: string;
+  phone: string | null;
+  procedureNotes: string | undefined;
+}) {
+  const meta = [`[DOMINIO:${domain}]`];
+  if (phone) meta.push(`[TEL:${phone}]`);
+  const text = procedureNotes ? procedureNotes.toUpperCase() : "";
+  return `${meta.join("")} ${text}`.trim();
+}
+
 function mapClient(row: any) {
   const latestProcedure = (row.client_procedures ?? [])[0] ?? null;
 
@@ -307,7 +322,7 @@ export async function POST(request: Request) {
           { status: 500 },
         );
       }
-      const { data: updatedExistingClient, error: updateExistingClientError } = await supabaseServer
+      let { data: updatedExistingClient, error: updateExistingClientError } = await supabaseServer
         .from("clients")
         .update({
           first_name: payload.firstName.toUpperCase(),
@@ -323,6 +338,22 @@ export async function POST(request: Request) {
           "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
         )
         .single();
+
+      if (updateExistingClientError?.code === "42703") {
+        const fallbackUpdate = await supabaseServer
+          .from("clients")
+          .update({
+            first_name: payload.firstName.toUpperCase(),
+            last_name: payload.lastName.toUpperCase(),
+            phone: normalizedPhone,
+          })
+          .eq("id", targetClientId)
+          .select("id, first_name, last_name, phone, email, created_at, updated_at")
+          .single();
+
+        updatedExistingClient = fallbackUpdate.data as any;
+        updateExistingClientError = fallbackUpdate.error as any;
+      }
 
       if (updateExistingClientError || !updatedExistingClient) {
         console.error(
@@ -394,16 +425,18 @@ export async function POST(request: Request) {
 
     let { data: createdProcedure, error: procedureError } = await supabaseServer
       .from("client_procedures")
-      .insert({
-        client_id: targetClientId,
-        procedure_type_id: payload.procedureTypeId,
-        distributor_id: payload.distributorId || null,
-        notes: payload.procedureNotes
-          ? `[DOMINIO:${domain}] ${payload.procedureNotes.toUpperCase()}`
-          : `[DOMINIO:${domain}]`,
-        paid: payload.paid,
-        total_amount: payload.totalAmount,
-        amount_paid: payload.amountPaid,
+        .insert({
+          client_id: targetClientId,
+          procedure_type_id: payload.procedureTypeId,
+          distributor_id: payload.distributorId || null,
+          notes: buildProcedureNotes({
+            domain,
+            phone: normalizedPhone,
+            procedureNotes: payload.procedureNotes,
+          }),
+          paid: payload.paid,
+          total_amount: payload.totalAmount,
+          amount_paid: payload.amountPaid,
       })
       .select("id")
       .single();
@@ -429,9 +462,11 @@ export async function POST(request: Request) {
           client_id: targetClientId,
           procedure_type_id: payload.procedureTypeId,
           distributor_id: payload.distributorId || null,
-          notes: payload.procedureNotes
-            ? `[DOMINIO:${domain}] ${payload.procedureNotes.toUpperCase()}`
-            : `[DOMINIO:${domain}]`,
+          notes: buildProcedureNotes({
+            domain,
+            phone: normalizedPhone,
+            procedureNotes: payload.procedureNotes,
+          }),
           total_amount: payload.totalAmount,
         })
         .select("id")

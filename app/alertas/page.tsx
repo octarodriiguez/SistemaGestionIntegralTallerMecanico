@@ -9,9 +9,9 @@ import {
   MessageCircle,
   PackageCheck,
   Search,
+  X,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import Swal from "sweetalert2";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -139,6 +139,14 @@ function formatAmount(value: number | null | undefined) {
   });
 }
 
+function stripMetaTags(notes: string | null | undefined) {
+  if (!notes) return "";
+  return notes
+    .replace(/\[DOMINIO:[^\]]+\]/gi, "")
+    .replace(/\[TEL:[^\]]+\]/gi, "")
+    .trim();
+}
+
 export default function AlertasPage() {
   const [vencimientosOpen, setVencimientosOpen] = useState(false);
   const [retirosOpen, setRetirosOpen] = useState(true);
@@ -167,6 +175,9 @@ export default function AlertasPage() {
     total: 0,
     totalPages: 1,
   });
+  const [retireModalOpen, setRetireModalOpen] = useState(false);
+  const [retireProcedureId, setRetireProcedureId] = useState("");
+  const [retireAmountInput, setRetireAmountInput] = useState("0");
 
   const activeMonth = useMemo(() => (showAll ? "" : monthFilter), [showAll, monthFilter]);
 
@@ -312,23 +323,10 @@ export default function AlertasPage() {
       let amountPaid: number | undefined;
       if (action === "retired") {
         const remaining = Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0);
-        const result = await Swal.fire({
-          title: "Marcar retirado",
-          text: `Monto abonado al retirar (saldo actual: ${remaining})`,
-          input: "text",
-          inputValue: remaining > 0 ? String(remaining) : "0",
-          showCancelButton: true,
-          confirmButtonText: "Confirmar",
-          cancelButtonText: "Cancelar",
-        });
-        if (!result.isConfirmed) return;
-
-        const parsed = Number(String(result.value ?? "").replace(",", "."));
-        if (Number.isNaN(parsed) || parsed < 0) {
-          await Swal.fire({ title: "Error", text: "Monto invalido.", icon: "error" });
-          return;
-        }
-        amountPaid = parsed;
+        setRetireProcedureId(row.id);
+        setRetireAmountInput(remaining > 0 ? String(remaining) : "0");
+        setRetireModalOpen(true);
+        return;
       }
 
       const res = await fetch("/api/avisos/retiro/estado", {
@@ -350,6 +348,32 @@ export default function AlertasPage() {
         );
       }
 
+      await fetchDeliveries({ page: deliveryPagination.page, query: deliverySearch });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al actualizar retiro.");
+    }
+  }
+
+  async function confirmRetiredFromModal() {
+    const amountPaid = Number(String(retireAmountInput ?? "").replace(",", "."));
+    if (Number.isNaN(amountPaid) || amountPaid < 0) {
+      toast.error("Monto invalido.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/avisos/retiro/estado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ procedureId: retireProcedureId, action: "retired", amountPaid }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "No se pudo actualizar estado.");
+
+      setRetireModalOpen(false);
+      setRetireProcedureId("");
+      setRetireAmountInput("0");
+      toast.success("Tramite marcado como retirado.");
       await fetchDeliveries({ page: deliveryPagination.page, query: deliverySearch });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Error al actualizar retiro.");
@@ -689,8 +713,8 @@ export default function AlertasPage() {
                               </span>
                             </td>
                             <td className="px-3 py-2.5 text-slate-700">
-                              <div className="truncate" title={row.notes || "-"}>
-                                {row.notes || "-"}
+                              <div className="truncate" title={stripMetaTags(row.notes) || "-"}>
+                                {stripMetaTags(row.notes) || "-"}
                               </div>
                             </td>
                             <td className="px-3 py-2.5">
@@ -772,6 +796,38 @@ export default function AlertasPage() {
           </Card>
         </div>
       </div>
+
+      {retireModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-2 pt-16">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Marcar retirado</h3>
+                <p className="text-sm text-slate-600">Ingresa el monto abonado al retirar.</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setRetireModalOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-3 p-4">
+              <input
+                value={retireAmountInput}
+                onChange={(e) => setRetireAmountInput(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+                placeholder="Monto abonado"
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setRetireModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={confirmRetiredFromModal} className="rounded-xl bg-slate-900 text-white hover:bg-slate-800">
+                  Confirmar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AppShell>
   );
 }

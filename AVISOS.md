@@ -198,3 +198,63 @@ En la sidebar del sistema:
 
 Para dejar el historico como "ya cargado" y empezar con pendientes nuevos:
 - ejecutar `scripts/sql/2026-02-23_office_mark_all_loaded.sql`.
+
+---
+
+## Actualizacion 2026-02-26 (Alertas/Avisos)
+
+### Cambios funcionales recientes
+
+1. `Vencimientos` inicia cerrado por defecto.
+2. Etiqueta de tramite:
+- `RENOVACION_OBLEA` se muestra como `OBLEA` (antes `O`).
+3. En `Retiro de tramites` se agrego columna `Obs` para ver observaciones.
+4. Boton `Retirado` se muestra con texto (no solo icono) en flujos operativos.
+5. Captura de monto al retirar ahora usa modal visual (SweetAlert).
+
+### UX de confirmaciones (SweetAlert)
+
+Se incorporo `sweetalert2` para reemplazar prompts nativos en acciones criticas:
+- Confirmar y cargar monto en accion `Retirado`.
+- Confirmaciones con feedback visual de exito/error.
+
+Archivos:
+- `app/alertas/page.tsx`
+- `app/clientes/page.tsx`
+
+### Estados de retiro (recordatorio)
+
+Tabla: `procedure_delivery_status`
+
+Estados:
+- `PENDIENTE_RECEPCION`
+- `RECIBIDO`
+- `AVISADO_RETIRO`
+- `RETIRADO`
+
+Transiciones tipicas:
+1. Alta de tramite -> `PENDIENTE_RECEPCION`
+2. Llega tramite al taller -> `RECIBIDO`
+3. Se avisa cliente -> `AVISADO_RETIRO`
+4. Cliente retira -> `RETIRADO`
+
+### Endpoints clave de Avisos
+
+- `GET /api/avisos`
+  - listado de vencimientos (alias de alertas)
+- `POST /api/avisos/comprobar`
+  - comprobacion masiva ENARGAS
+- `POST /api/avisos/avisar`
+  - marca estado avisado de vencimiento
+- `GET /api/avisos/retiro`
+  - listado operativo de retiro (filtros: `yesterday`, `pending`, `all`)
+- `POST /api/avisos/retiro/estado`
+  - acciones: `received`, `notified`, `retired`
+
+### Nota operativa importante
+
+Si en entorno productivo aparece error de estados de retiro o alertas:
+1. Verificar que se ejecutaron SQL:
+- `scripts/sql/2026-02-22_alertas_status.sql`
+- `scripts/sql/2026-02-22_procedure_delivery_status.sql`
+2. Verificar que existe `public.set_updated_at()` para triggers.

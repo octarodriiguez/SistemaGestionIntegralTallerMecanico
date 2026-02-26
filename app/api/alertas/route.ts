@@ -39,6 +39,12 @@ function getMonthRange(date: string) {
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
+function extractPhoneFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const tagged = notes.match(/\[TEL:([0-9]+)\]/i);
+  return tagged?.[1] ?? null;
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = getSupabaseServerClient();
@@ -212,7 +218,7 @@ export async function GET(request: Request) {
               id: row.clients.id,
               firstName: row.clients.first_name,
               lastName: row.clients.last_name,
-              phone: row.clients.phone,
+              phone: extractPhoneFromNotes(row.notes) ?? row.clients.phone,
             }
           : null,
         vehicle: vehicle ?? null,

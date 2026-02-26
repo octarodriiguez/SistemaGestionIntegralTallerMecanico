@@ -18,6 +18,12 @@ function extractDomainFromNotes(notes: string | null | undefined): string | null
   return null;
 }
 
+function extractPhoneFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const tagged = notes.match(/\[TEL:([0-9]+)\]/i);
+  return tagged?.[1] ?? null;
+}
+
 function resolveVehicle(
   notes: string | null | undefined,
   vehicles: { brand: string; model: string; domain: string }[],
@@ -252,7 +258,7 @@ export async function GET(request: Request) {
               id: row.clients.id,
               firstName: row.clients.first_name,
               lastName: row.clients.last_name,
-              phone: row.clients.phone,
+              phone: extractPhoneFromNotes(row.notes) ?? row.clients.phone,
             }
           : null,
         vehicle: firstVehicle
@@ -381,8 +387,8 @@ export async function PATCH(request: Request) {
       }
 
       const notes = payload.procedureNotes
-        ? `[DOMINIO:${domain}] ${payload.procedureNotes.toUpperCase()}`
-        : `[DOMINIO:${domain}]`;
+        ? `[DOMINIO:${domain}]${phone ? `[TEL:${phone}]` : ""} ${payload.procedureNotes.toUpperCase()}`
+        : `[DOMINIO:${domain}]${phone ? `[TEL:${phone}]` : ""}`;
 
       const { error: procedureError } = await supabase
         .from("client_procedures")
