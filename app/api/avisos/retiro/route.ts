@@ -94,14 +94,44 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
 
     if (filter === "yesterday") {
-      const now = new Date();
-      const yesterdayStart = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1, 0, 0, 0, 0),
+      const { data: latestLoadedRow, error: latestLoadedError } = await supabase
+        .from("client_procedures")
+        .select("created_at")
+        .in("procedure_type_id", targetProcedureTypeIds)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (latestLoadedError) {
+        return NextResponse.json(
+          { error: "No se pudo determinar el ultimo dia cargado." },
+          { status: 500 },
+        );
+      }
+
+      if (!latestLoadedRow?.created_at) {
+        return NextResponse.json({
+          data: [],
+          pagination: { page, pageSize, total: 0, totalPages: 1 },
+        });
+      }
+
+      const latestDate = new Date(latestLoadedRow.created_at);
+      const dayStart = new Date(
+        Date.UTC(
+          latestDate.getUTCFullYear(),
+          latestDate.getUTCMonth(),
+          latestDate.getUTCDate(),
+          0,
+          0,
+          0,
+          0,
+        ),
       );
-      const todayStart = new Date(
-        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0),
-      );
-      query = query.gte("created_at", yesterdayStart.toISOString()).lt("created_at", todayStart.toISOString());
+      const dayEnd = new Date(dayStart);
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+      query = query.gte("created_at", dayStart.toISOString()).lt("created_at", dayEnd.toISOString());
     }
 
     if (!needsClientSideFilter) {
@@ -146,39 +176,39 @@ export async function GET(request: Request) {
       }
     >();
 
-    if (procedureIds.length > 0) {
-      const { data: statuses } = await supabase
-        .from("procedure_delivery_status")
-        .select("procedure_id, status, received_at, notified_at, picked_up_at")
-        .in("procedure_id", procedureIds);
+    const [statusesResult, vehiclesResult] = await Promise.all([
+      procedureIds.length > 0
+        ? supabase
+            .from("procedure_delivery_status")
+            .select("procedure_id, status, received_at, notified_at, picked_up_at")
+            .in("procedure_id", procedureIds)
+        : Promise.resolve({ data: [] as any[] }),
+      clientIds.length > 0
+        ? supabase
+            .from("vehicles")
+            .select("client_id, brand, model, domain")
+            .in("client_id", clientIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
 
-      statusesByProcedure = new Map(
-        (statuses ?? []).map((item: any) => [
-          item.procedure_id,
-          {
-            status: item.status,
-            receivedAt: item.received_at,
-            notifiedAt: item.notified_at,
-            pickedUpAt: item.picked_up_at,
-          },
-        ]),
-      );
-    }
+    statusesByProcedure = new Map(
+      ((statusesResult.data as any[] | null) ?? []).map((item: any) => [
+        item.procedure_id,
+        {
+          status: item.status,
+          receivedAt: item.received_at,
+          notifiedAt: item.notified_at,
+          pickedUpAt: item.picked_up_at,
+        },
+      ]),
+    );
 
-    let vehiclesByClient = new Map<string, { brand: string; model: string; domain: string }[]>();
-    if (clientIds.length > 0) {
-      const { data: vehicles } = await supabase
-        .from("vehicles")
-        .select("client_id, brand, model, domain")
-        .in("client_id", clientIds);
-
-      vehiclesByClient = (vehicles ?? []).reduce((acc, row: any) => {
-        const list = acc.get(row.client_id) ?? [];
-        list.push({ brand: row.brand, model: row.model, domain: row.domain });
-        acc.set(row.client_id, list);
-        return acc;
-      }, new Map<string, { brand: string; model: string; domain: string }[]>());
-    }
+    const vehiclesByClient = (((vehiclesResult.data as any[] | null) ?? []).reduce((acc, row: any) => {
+      const list = acc.get(row.client_id) ?? [];
+      list.push({ brand: row.brand, model: row.model, domain: row.domain });
+      acc.set(row.client_id, list);
+      return acc;
+    }, new Map<string, { brand: string; model: string; domain: string }[]>()));
 
     const mapped = procedures.map((row: any) => {
       const clientId = row.client_id;

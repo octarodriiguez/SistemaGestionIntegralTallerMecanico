@@ -322,51 +322,9 @@ export async function POST(request: Request) {
           { status: 500 },
         );
       }
-      let { data: updatedExistingClient, error: updateExistingClientError } = await supabaseServer
-        .from("clients")
-        .update({
-          first_name: payload.firstName.toUpperCase(),
-          last_name: payload.lastName.toUpperCase(),
-          phone: normalizedPhone,
-          address: payload.address || existingClient.address || null,
-          notes: payload.notes
-            ? payload.notes.toUpperCase()
-            : existingClient.notes || null,
-        })
-        .eq("id", targetClientId)
-        .select(
-          "id, first_name, last_name, phone, email, address, notes, created_at, updated_at",
-        )
-        .single();
-
-      if (updateExistingClientError?.code === "42703") {
-        const fallbackUpdate = await supabaseServer
-          .from("clients")
-          .update({
-            first_name: payload.firstName.toUpperCase(),
-            last_name: payload.lastName.toUpperCase(),
-            phone: normalizedPhone,
-          })
-          .eq("id", targetClientId)
-          .select("id, first_name, last_name, phone, email, created_at, updated_at")
-          .single();
-
-        updatedExistingClient = fallbackUpdate.data as any;
-        updateExistingClientError = fallbackUpdate.error as any;
-      }
-
-      if (updateExistingClientError || !updatedExistingClient) {
-        console.error(
-          "POST /api/clientes existing client update error:",
-          updateExistingClientError,
-        );
-        return NextResponse.json(
-          { error: "No se pudo actualizar los datos del cliente existente." },
-          { status: 500 },
-        );
-      }
-
-      client = updatedExistingClient;
+      // No actualizamos telefono de clients en este flujo para no pisar
+      // telefonos historicos de otros tramites del mismo cliente.
+      client = existingClient;
     } else {
       const { data: createdClient, error: clientError } = await supabaseServer
         .from("clients")
@@ -385,6 +343,16 @@ export async function POST(request: Request) {
 
       if (clientError || !createdClient) {
         console.error("POST /api/clientes client create error:", clientError);
+        if (clientError?.code === "23502") {
+          return NextResponse.json(
+            {
+              error:
+                "La columna clients.phone no acepta NULL. Ejecuta el SQL 2026-02-27_clients_phone_nullable.sql.",
+              details: clientError.message,
+            },
+            { status: 500 },
+          );
+        }
         return NextResponse.json(
           { error: "No se pudo crear el cliente." },
           { status: 500 },
@@ -564,6 +532,16 @@ export async function PATCH(request: Request) {
 
     if (error) {
       console.error("PATCH /api/clientes error:", error);
+      if (error?.code === "23502") {
+        return NextResponse.json(
+          {
+            error:
+              "La columna clients.phone no acepta NULL. Ejecuta el SQL 2026-02-27_clients_phone_nullable.sql.",
+            details: error.message,
+          },
+          { status: 500 },
+        );
+      }
       return NextResponse.json(
         { error: "No se pudo actualizar el cliente.", details: error.message },
         { status: 500 },

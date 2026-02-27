@@ -325,11 +325,20 @@ export async function PATCH(request: Request) {
         .update({
           first_name: payload.firstName.toUpperCase(),
           last_name: payload.lastName.toUpperCase(),
-          phone,
         })
         .eq("id", payload.clientId);
 
       if (clientError) {
+        if (clientError?.code === "23502") {
+          return NextResponse.json(
+            {
+              error:
+                "La columna clients.phone no acepta NULL. Ejecuta el SQL 2026-02-27_clients_phone_nullable.sql.",
+              details: clientError.message,
+            },
+            { status: 500 },
+          );
+        }
         return NextResponse.json(
           { error: "No se pudo actualizar cliente.", details: clientError.message },
           { status: 500 },

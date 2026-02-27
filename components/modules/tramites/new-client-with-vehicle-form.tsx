@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
+import Swal from "sweetalert2";
 
 type ProcedureType = {
   id: string;
@@ -126,10 +127,15 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
       };
 
       const phonePreview = normalizePhoneForPreview(form.phone);
-      const confirmed = window.confirm(
-        `Se va a guardar este telefono: ${phonePreview}. ¿Confirmar?`,
-      );
-      if (!confirmed) {
+      const confirmResult = await Swal.fire({
+        title: "Confirmar telefono",
+        text: `Se va a guardar este telefono: ${phonePreview}`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Confirmar",
+        cancelButtonText: "Cancelar",
+      });
+      if (!confirmResult.isConfirmed) {
         setSaving(false);
         return;
       }

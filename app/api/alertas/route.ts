@@ -163,41 +163,41 @@ export async function GET(request: Request) {
       }
     >();
 
-    if (procedureIds.length > 0) {
-      const { data: statuses, error: statusesError } = await supabase
-        .from("procedure_alert_status")
-        .select("procedure_id, status, notified_at, last_checked_at, enargas_last_operation_date")
-        .in("procedure_id", procedureIds);
+    const [statusesResult, vehiclesResult] = await Promise.all([
+      procedureIds.length > 0
+        ? supabase
+            .from("procedure_alert_status")
+            .select("procedure_id, status, notified_at, last_checked_at, enargas_last_operation_date")
+            .in("procedure_id", procedureIds)
+        : Promise.resolve({ data: [] as any[], error: null }),
+      clientIds.length > 0
+        ? supabase
+            .from("vehicles")
+            .select("client_id, brand, model, domain")
+            .in("client_id", clientIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
 
-      if (!statusesError) {
-        statusesByProcedure = new Map(
-          (statuses ?? []).map((item: any) => [
-            item.procedure_id,
-            {
-              status: item.status,
-              notifiedAt: item.notified_at,
-              lastCheckedAt: item.last_checked_at,
-              enargasLastOperationDate: item.enargas_last_operation_date,
-            },
-          ]),
-        );
-      }
+    if (!statusesResult.error) {
+      statusesByProcedure = new Map(
+        (((statusesResult.data as any[] | null) ?? []).map((item: any) => [
+          item.procedure_id,
+          {
+            status: item.status,
+            notifiedAt: item.notified_at,
+            lastCheckedAt: item.last_checked_at,
+            enargasLastOperationDate: item.enargas_last_operation_date,
+          },
+        ])),
+      );
     }
 
-    let vehiclesByClient = new Map<string, { brand: string; model: string; domain: string }[]>();
-    if (clientIds.length > 0) {
-      const { data: vehicles } = await supabase
-        .from("vehicles")
-        .select("client_id, brand, model, domain")
-        .in("client_id", clientIds);
-
-      vehiclesByClient = (vehicles ?? []).reduce((acc, row: any) => {
-        const list = acc.get(row.client_id) ?? [];
-        list.push({ brand: row.brand, model: row.model, domain: row.domain });
-        acc.set(row.client_id, list);
-        return acc;
-      }, new Map<string, { brand: string; model: string; domain: string }[]>());
-    }
+    const vehiclesByClient = (((vehiclesResult.data as any[] | null) ?? []).reduce((acc, row: any) => {
+      const list = acc.get(row.client_id) ?? [];
+      list.push({ brand: row.brand, model: row.model, domain: row.domain });
+      acc.set(row.client_id, list);
+      return acc;
+    }, new Map<string, { brand: string; model: string; domain: string }[]>()));
 
     let mapped = procedures.map((row: any) => {
       const clientId = row.client_id;

@@ -468,8 +468,7 @@ export default function AlertasPage() {
                   <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
-                        <th className="w-[20%] px-3 py-2.5 font-medium">Cliente</th>
-                        <th className="w-[12%] px-3 py-2.5 font-medium">Telefono</th>
+                        <th className="w-[24%] px-3 py-2.5 font-medium">Cliente</th>
                         <th className="w-[10%] px-3 py-2.5 font-medium">Dominio</th>
                         <th className="w-[18%] px-3 py-2.5 font-medium">Vehiculo</th>
                         <th className="w-[6%] px-3 py-2.5 font-medium">Tramite</th>
@@ -482,13 +481,13 @@ export default function AlertasPage() {
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                             Cargando avisos...
                           </td>
                         </tr>
                       ) : rows.length === 0 ? (
                         <tr>
-                          <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                             No hay avisos para este filtro.
                           </td>
                         </tr>
@@ -499,9 +498,9 @@ export default function AlertasPage() {
                               <div className="truncate font-medium">
                                 {`${row.client?.lastName || "-"}, ${row.client?.firstName || "-"}`}
                               </div>
-                            </td>
-                            <td className="px-3 py-2.5 text-slate-700">
-                              <div className="truncate">{row.client?.phone || "-"}</div>
+                              <div className="truncate text-[11px] text-slate-600">
+                                {row.client?.phone || "-"}
+                              </div>
                             </td>
                             <td className="px-3 py-2.5 text-slate-700">
                               <div className="truncate font-semibold tracking-wide">
@@ -632,8 +631,7 @@ export default function AlertasPage() {
                   <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
-                        <th className="w-[16%] px-3 py-2.5 font-medium">Cliente</th>
-                        <th className="w-[10%] px-3 py-2.5 font-medium">Telefono</th>
+                        <th className="w-[20%] px-3 py-2.5 font-medium">Cliente</th>
                         <th className="w-[8%] px-3 py-2.5 font-medium">Dominio</th>
                         <th className="w-[14%] px-3 py-2.5 font-medium">Vehiculo</th>
                         <th className="w-[5%] px-3 py-2.5 font-medium">Tramite</th>
@@ -650,13 +648,13 @@ export default function AlertasPage() {
                     <tbody>
                       {deliveryLoading ? (
                         <tr>
-                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
                             Cargando retiros...
                           </td>
                         </tr>
                       ) : deliveryRows.length === 0 ? (
                         <tr>
-                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
                             No hay trámites para retiro.
                           </td>
                         </tr>
@@ -667,9 +665,9 @@ export default function AlertasPage() {
                               <div className="truncate font-medium">
                                 {`${row.client?.lastName || "-"}, ${row.client?.firstName || "-"}`}
                               </div>
-                            </td>
-                            <td className="px-3 py-2.5 text-slate-700">
-                              <div className="truncate">{row.client?.phone || "-"}</div>
+                              <div className="truncate text-[11px] text-slate-600">
+                                {row.client?.phone || "-"}
+                              </div>
                             </td>
                             <td className="px-3 py-2.5 text-slate-700">
                               <div className="truncate font-semibold tracking-wide">
@@ -733,7 +731,6 @@ export default function AlertasPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleDeliveryAction(row, "notified")}
-                                  disabled={!row.client?.phone || row.status !== "RECIBIDO"}
                                   className="h-7 gap-1 px-2 text-[10px]"
                                 >
                                   <MessageCircle className="h-3.5 w-3.5" />
