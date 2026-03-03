@@ -833,7 +833,7 @@ export default function AlertasPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleAvisar(row)}
-                                  disabled={!row.client?.phone}
+                                  disabled={!row.client?.phone || row.status === "NO_CORRESPONDE_AVISAR"}
                                   className="h-7 gap-1 px-1.5 text-[10px]"
                                 >
                                   {row.status === "AVISADO" ? (

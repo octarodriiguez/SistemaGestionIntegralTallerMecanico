@@ -1346,3 +1346,53 @@ npx playwright install chromium
 - Commit subido a `main`:
   - `170e8d7`
 - Incluye todos los cambios anteriores.
+
+### 11) Script ENARGAS: migracion para deploy serverless (Vercel)
+
+#### Problema detectado
+- En local el scraping funcionaba correctamente.
+- En deploy fallaba con error:
+  - `Executable doesn't exist ... chromium_headless_shell ...`
+- Causa: en funciones serverless no siempre existe el binario de Chromium en runtime, y depender de `playwright install` en build resulto inestable.
+
+#### Solucion implementada
+- Se migro el scraper a modo hibrido:
+  - **Produccion (Vercel/AWS):**
+    - `playwright-core` + `@sparticuz/chromium`
+    - Usa binario compatible con Lambda/serverless sin depender de descarga manual en build.
+  - **Local:**
+    - Mantiene `playwright` para desarrollo normal.
+
+Archivo modificado:
+- `lib/enargas-scraper.ts`
+
+Dependencias agregadas:
+- `@sparticuz/chromium`
+- `playwright-core`
+
+Archivo modificado:
+- `package.json`
+
+#### Logica tecnica actual del scraper
+1. Detecta entorno serverless con:
+   - `process.env.VERCEL`
+   - `process.env.AWS_EXECUTION_ENV`
+2. Si es serverless:
+   - importa `playwright-core`
+   - obtiene executable path desde `@sparticuz/chromium`
+   - lanza navegador con args/runtime de chromium serverless
+3. Si no es serverless (local):
+   - importa `playwright`
+   - lanza Chromium local con flags de estabilidad
+4. Continúa el mismo flujo de scraping ENARGAS:
+   - abre consulta por dominio
+   - extrae fechas
+   - calcula y devuelve ultima operacion
+
+#### Cambios de configuracion
+- Se removio `postinstall: playwright install chromium` de `package.json`.
+- Ya no se depende de descarga de browser durante el build para que funcione en Vercel.
+
+#### Commit de este bloque
+- Commit subido a `main`:
+  - `731fc09`
