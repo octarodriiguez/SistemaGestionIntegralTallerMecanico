@@ -1,5 +1,3 @@
-import { chromium } from "playwright";
-
 const ENARGAS_URL =
   "https://www.enargas.gob.ar/secciones/gas-natural-comprimido/consulta-dominio.php";
 
@@ -10,6 +8,11 @@ export type EnargasScrapeResult = {
   lastOperationDate: string | null;
   source: "ENARGAS";
   error?: string;
+};
+
+type BrowserInstance = {
+  newPage: (options?: Record<string, unknown>) => Promise<any>;
+  close: () => Promise<void>;
 };
 
 function normalizeDomain(domain: string) {
@@ -25,22 +28,45 @@ function extractDateMatches(text: string) {
   return text.match(/\d{2}\/\d{2}\/\d{4}/g) ?? [];
 }
 
+async function launchBrowser(): Promise<BrowserInstance> {
+  const isServerlessRuntime = Boolean(process.env.VERCEL || process.env.AWS_EXECUTION_ENV);
+
+  if (isServerlessRuntime) {
+    const [{ chromium: playwrightChromium }, chromiumModule] = await Promise.all([
+      import("playwright-core"),
+      import("@sparticuz/chromium"),
+    ]);
+
+    const chromium = (chromiumModule as any).default ?? chromiumModule;
+    const executablePath = await chromium.executablePath();
+
+    return playwrightChromium.launch({
+      headless: chromium.headless,
+      executablePath,
+      args: chromium.args,
+    });
+  }
+
+  const { chromium } = await import("playwright");
+  return chromium.launch({
+    headless: true,
+    args: [
+      "--disable-blink-features=AutomationControlled",
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    ],
+  });
+}
+
 export async function fetchEnargasLastOperationDate(
   domain: string,
 ): Promise<EnargasScrapeResult> {
   const normalizedDomain = normalizeDomain(domain);
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+  let browser: BrowserInstance | null = null;
 
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        "--disable-blink-features=AutomationControlled",
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-      ],
-    });
+    browser = await launchBrowser();
     const page = await browser.newPage({
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -56,14 +82,14 @@ export async function fetchEnargasLastOperationDate(
     await page.waitForSelector("tbody tr", { timeout: 10000 }).catch(() => null);
     await page.waitForTimeout(700);
 
-    const dates = await page.$$eval("tbody tr td", (nodes) =>
-      nodes.map((node) => (node.textContent || "").trim()),
+    const dates: string[] = await page.$$eval("tbody tr td", (nodes: Element[]) =>
+      nodes.map((node: Element) => (node.textContent || "").trim()),
     );
 
-    const extractedFromCells = dates.flatMap((value) => extractDateMatches(value));
+    const extractedFromCells = dates.flatMap((value: string) => extractDateMatches(value));
     const parsedDates = extractedFromCells
-      .filter((value) => /^\d{2}\/\d{2}\/\d{4}$/.test(value))
-      .map((value) => ({ value, date: (() => {
+      .filter((value: string) => /^\d{2}\/\d{2}\/\d{4}$/.test(value))
+      .map((value: string) => ({ value, date: (() => {
         const [d, m, y] = value.split("/");
         return new Date(Number(y), Number(m) - 1, Number(d));
       })() }));
@@ -72,7 +98,7 @@ export async function fetchEnargasLastOperationDate(
       const bodyText = await page.textContent("body").catch(() => "");
       const fallbackMatches = extractDateMatches(bodyText || "");
       const fallbackDates = fallbackMatches
-        .map((value) => ({ value, date: parseDateValue(value) }))
+        .map((value: string) => ({ value, date: parseDateValue(value) }))
         .sort((a, b) => b.date.getTime() - a.date.getTime());
 
       if (fallbackDates.length > 0) {
@@ -86,17 +112,17 @@ export async function fetchEnargasLastOperationDate(
         };
       }
 
-      const tableRowsText = await page.$$eval("tbody tr", (rows) =>
+      const tableRowsText = await page.$$eval("tbody tr", (rows: Element[]) =>
         rows
-          .map((row) => (row.textContent || "").replace(/\s+/g, " ").trim())
+          .map((row: Element) => (row.textContent || "").replace(/\s+/g, " ").trim())
           .filter(Boolean)
           .slice(0, 6),
       ).catch(() => []);
       const visibleAlerts = await page.$$eval(
         ".alert, .error, .mensaje, .message, #mensaje, #msg, .text-danger",
-        (nodes) =>
+        (nodes: Element[]) =>
           nodes
-            .map((n) => (n.textContent || "").replace(/\s+/g, " ").trim())
+            .map((n: Element) => (n.textContent || "").replace(/\s+/g, " ").trim())
             .filter(Boolean)
             .slice(0, 6),
       ).catch(() => []);

@@ -1267,3 +1267,82 @@ npx playwright install chromium
 3. Cola/background job para comprobaciones largas.
 4. Estrategia de reintentos por dominio con fallo transitorio.
 5. Distincion visual entre alerta por Oblea y por PH con badges.
+
+---
+
+## Bitacora de avances (03-03-2026)
+
+### 1) Avisos: re-avisar habilitado
+- En la tabla de vencimientos, el boton `Avisar` ahora queda habilitado siempre que exista telefono.
+- Ya no depende de que el estado sea `PENDIENTE_DE_AVISAR`.
+- Archivo: `app/alertas/page.tsx`.
+
+### 2) Retiro de tramites: acciones masivas
+- Se agregaron checks por fila y seleccion total en la tabla.
+- Se agregaron acciones masivas:
+  - `Marcar recibidos (N)`
+  - `Avisar seleccionados`
+- Para aviso masivo se muestra confirmacion con `SweetAlert2` y luego se abren los chats de WhatsApp.
+- Archivos:
+  - `app/alertas/page.tsx`
+  - `app/api/avisos/retiro/estado/route.ts`
+
+### 3) Persistencia de estado en retiro
+- Se mantiene el flujo de estados:
+  - default: `PENDIENTE_RECEPCION`
+  - al marcar recibido: `RECIBIDO`
+  - al avisar: `AVISADO_RETIRO`
+  - al retirar: `RETIRADO`
+- Se agrego proteccion para no degradar un tramite ya `RETIRADO` a estados anteriores por error.
+- El endpoint de estado ahora acepta `procedureId` o `procedureIds`.
+- Archivo: `app/api/avisos/retiro/estado/route.ts`.
+
+### 4) Filtro "Cargados ayer" corregido
+- Se ajusto la logica para que tome el dia de carga anterior al ultimo dia con movimientos.
+- Esto evita que en inicio de semana se mezclen resultados del dia actual.
+- Archivo: `app/api/avisos/retiro/route.ts`.
+
+### 5) Exportacion a Excel y PDF
+- Se agrego exportacion en ambos bloques del modulo `Avisos`:
+  - Vencimientos: Excel (CSV) y PDF
+  - Retiro: Excel (CSV) y PDF
+- Archivo: `app/alertas/page.tsx`.
+
+### 6) Resumen de retirados/pendientes en navegacion
+- Se agrego resumen visible sobre el modulo `Avisos` en sidebar:
+  - `P`: pendientes de retiro
+  - `R`: retirados
+- Se actualiza periodicamente.
+- Archivos:
+  - `components/layout/app-shell.tsx`
+  - `app/api/avisos/retiro/resumen/route.ts`
+
+### 7) Permisos para mesa de entrada en retiro
+- Se habilito acceso a endpoints de retiro para `MESA_ENTRADA`.
+- Ahora puede operar marcado de estado en retiro sin quedar bloqueado por rol.
+- Archivo: `middleware.ts`.
+
+### 8) ENARGAS en deploy (Vercel)
+- Problema detectado en produccion: Playwright no encontraba binario de Chromium.
+- Evidencia en logs:
+  - `browserType.launch: Executable doesn't exist...`
+- Cambios aplicados:
+  - Script post-instalacion:
+    - `postinstall: playwright install chromium`
+  - Flags de Chromium para entorno serverless:
+    - `--no-sandbox`
+    - `--disable-setuid-sandbox`
+    - `--disable-dev-shm-usage`
+- Archivos:
+  - `package.json`
+  - `lib/enargas-scraper.ts`
+
+### 9) Configuracion obligatoria en Vercel
+- Definir variable de entorno:
+  - `PLAYWRIGHT_BROWSERS_PATH=0`
+- Luego hacer redeploy para que se instale Chromium en build.
+
+### 10) Deploy de codigo
+- Commit subido a `main`:
+  - `170e8d7`
+- Incluye todos los cambios anteriores.
