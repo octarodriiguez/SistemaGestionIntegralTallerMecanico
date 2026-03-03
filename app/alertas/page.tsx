@@ -6,12 +6,15 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  FileSpreadsheet,
+  FileText,
   MessageCircle,
   PackageCheck,
   Search,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import Swal from "sweetalert2";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -169,6 +172,8 @@ export default function AlertasPage() {
   const [deliveryLoading, setDeliveryLoading] = useState(true);
   const [deliverySearch, setDeliverySearch] = useState("");
   const [deliveryFilter, setDeliveryFilter] = useState<"yesterday" | "pending" | "all">("yesterday");
+  const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<string[]>([]);
+  const [processingBulk, setProcessingBulk] = useState(false);
   const [deliveryPagination, setDeliveryPagination] = useState<Pagination>({
     page: 1,
     pageSize: 20,
@@ -268,6 +273,12 @@ export default function AlertasPage() {
     fetchDeliveries({ page: 1 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deliveryFilter]);
+
+  useEffect(() => {
+    setSelectedDeliveryIds((current) =>
+      current.filter((id) => deliveryRows.some((row) => row.id === id)),
+    );
+  }, [deliveryRows]);
 
   async function runCheck() {
     setRunningCheck(true);
@@ -380,6 +391,283 @@ export default function AlertasPage() {
     }
   }
 
+  function downloadFile(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportDeliveriesExcel() {
+    const headers = [
+      "CLIENTE",
+      "TELEFONO",
+      "DOMINIO",
+      "VEHICULO",
+      "TRAMITE",
+      "FECHA_ALTA",
+      "TOTAL",
+      "ABONADO",
+      "SALDO",
+      "PAGADO",
+      "ESTADO",
+      "OBSERVACIONES",
+    ];
+
+    const csvRows = deliveryRows.map((row) => {
+      const values = [
+        `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim(),
+        row.client?.phone || "",
+        row.vehicle?.domain || "",
+        row.vehicle ? `${row.vehicle.brand} ${row.vehicle.model}` : "",
+        procedureLabel(row.procedureType?.code, row.procedureType?.displayName),
+        formatDate(row.createdAt),
+        String(row.totalAmount ?? ""),
+        String(row.amountPaid ?? ""),
+        String(Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0)),
+        row.paid ? "SI" : "NO",
+        deliveryStatusLabel(row.status),
+        stripMetaTags(row.notes),
+      ];
+      return values
+        .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+        .join(",");
+    });
+
+    const csv = [headers.join(","), ...csvRows].join("\n");
+    downloadFile(
+      "\ufeff" + csv,
+      `avisos_retiro_${new Date().toISOString().slice(0, 10)}.csv`,
+      "text/csv;charset=utf-8;",
+    );
+  }
+
+  function exportAlertsExcel() {
+    const headers = [
+      "CLIENTE",
+      "TELEFONO",
+      "DOMINIO",
+      "VEHICULO",
+      "TRAMITE",
+      "FECHA_TRAMITE",
+      "FECHA_ENARGAS",
+      "ESTADO",
+    ];
+
+    const csvRows = rows.map((row) => {
+      const values = [
+        `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim(),
+        row.client?.phone || "",
+        row.vehicle?.domain || "",
+        row.vehicle ? `${row.vehicle.brand} ${row.vehicle.model}` : "",
+        procedureLabel(row.procedureType?.code, row.procedureType?.displayName),
+        formatDate(row.createdAt),
+        formatDate(row.enargasLastOperationDate),
+        statusLabel(row.status),
+      ];
+      return values
+        .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+        .join(",");
+    });
+
+    const csv = [headers.join(","), ...csvRows].join("\n");
+    downloadFile(
+      "\ufeff" + csv,
+      `avisos_vencimientos_${new Date().toISOString().slice(0, 10)}.csv`,
+      "text/csv;charset=utf-8;",
+    );
+  }
+
+  function exportAlertsPdf() {
+    const htmlRows = rows
+      .map((row) => {
+        const client = `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim();
+        const vehicle = row.vehicle ? `${row.vehicle.brand} ${row.vehicle.model}` : "-";
+        return `<tr>
+          <td>${client || "-"}</td>
+          <td>${row.client?.phone || "-"}</td>
+          <td>${row.vehicle?.domain || "-"}</td>
+          <td>${vehicle}</td>
+          <td>${procedureLabel(row.procedureType?.code, row.procedureType?.displayName)}</td>
+          <td>${formatDate(row.createdAt)}</td>
+          <td>${formatDate(row.enargasLastOperationDate)}</td>
+          <td>${statusLabel(row.status)}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const popup = window.open("", "_blank", "width=1200,height=800");
+    if (!popup) {
+      toast.error("Habilita ventanas emergentes para exportar PDF.");
+      return;
+    }
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>Avisos vencimientos</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 16px; }
+            h1 { font-size: 18px; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #dbe2ea; padding: 6px; text-align: left; }
+            th { background: #f1f5f9; }
+          </style>
+        </head>
+        <body>
+          <h1>Avisos vencimientos - ${new Date().toLocaleDateString("es-AR")}</h1>
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th><th>Telefono</th><th>Dominio</th><th>Vehiculo</th>
+                <th>Tramite</th><th>Fecha tramite</th><th>Fecha ENARGAS</th><th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>${htmlRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  }
+
+  function exportDeliveriesPdf() {
+    const htmlRows = deliveryRows
+      .map((row) => {
+        const client = `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim();
+        const vehicle = row.vehicle ? `${row.vehicle.brand} ${row.vehicle.model}` : "-";
+        const saldo = formatAmount(Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0));
+        return `<tr>
+          <td>${client || "-"}</td>
+          <td>${row.client?.phone || "-"}</td>
+          <td>${row.vehicle?.domain || "-"}</td>
+          <td>${vehicle}</td>
+          <td>${procedureLabel(row.procedureType?.code, row.procedureType?.displayName)}</td>
+          <td>${formatDate(row.createdAt)}</td>
+          <td>${formatAmount(row.totalAmount)}</td>
+          <td>${formatAmount(row.amountPaid)}</td>
+          <td>${saldo}</td>
+          <td>${deliveryStatusLabel(row.status)}</td>
+        </tr>`;
+      })
+      .join("");
+
+    const popup = window.open("", "_blank", "width=1200,height=800");
+    if (!popup) {
+      toast.error("Habilita ventanas emergentes para exportar PDF.");
+      return;
+    }
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>Avisos retiro</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 16px; }
+            h1 { font-size: 18px; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #dbe2ea; padding: 6px; text-align: left; }
+            th { background: #f1f5f9; }
+          </style>
+        </head>
+        <body>
+          <h1>Avisos retiro - ${new Date().toLocaleDateString("es-AR")}</h1>
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th><th>Telefono</th><th>Dominio</th><th>Vehiculo</th>
+                <th>Tramite</th><th>Fecha</th><th>Total</th><th>Abonado</th><th>Saldo</th><th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>${htmlRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  }
+
+  function toggleDeliverySelection(id: string) {
+    setSelectedDeliveryIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  function toggleSelectAllVisibleDeliveries() {
+    const visibleIds = deliveryRows.map((row) => row.id);
+    const allSelected = visibleIds.every((id) => selectedDeliveryIds.includes(id));
+    if (allSelected) {
+      setSelectedDeliveryIds((current) => current.filter((id) => !visibleIds.includes(id)));
+      return;
+    }
+    setSelectedDeliveryIds((current) => Array.from(new Set([...current, ...visibleIds])));
+  }
+
+  async function handleBulkDeliveryAction(action: "received" | "notified") {
+    if (selectedDeliveryIds.length === 0) {
+      toast.error("Selecciona al menos un tramite.");
+      return;
+    }
+
+    setProcessingBulk(true);
+    try {
+      const res = await fetch("/api/avisos/retiro/estado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ procedureIds: selectedDeliveryIds, action }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "No se pudo actualizar estado.");
+
+      if (action === "notified") {
+        const rowsToNotify = deliveryRows.filter(
+          (row) => selectedDeliveryIds.includes(row.id) && row.client?.phone,
+        );
+
+        if (rowsToNotify.length > 0) {
+          const confirm = await Swal.fire({
+            title: "Abrir WhatsApp masivo",
+            text: `Se abriran ${rowsToNotify.length} chats para avisar retiro.`,
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonText: "Abrir",
+            cancelButtonText: "Cancelar",
+            confirmButtonColor: "#0f172a",
+            cancelButtonColor: "#94a3b8",
+          });
+
+          if (confirm.isConfirmed) {
+            for (const row of rowsToNotify) {
+              const message =
+                row.procedureType?.code === "PRUEBA_HIDRAULICA"
+                  ? "Hola buenas, le hablo del taller de GNC Cosquin para informarle que ya se encuentra listo el tubo para ser colocado"
+                  : "Hola buenas, le hablo del taller de GNC Cosquin para informarle que ya se encuentra la OBLEA para ser retirada";
+              window.open(
+                `https://api.whatsapp.com/send?phone=${toWhatsappPhone(row.client?.phone || "")}&text=${encodeURIComponent(message)}`,
+                "_blank",
+              );
+            }
+          }
+        }
+      }
+
+      toast.success(`Tramites actualizados: ${json.data?.updated ?? selectedDeliveryIds.length}.`);
+      setSelectedDeliveryIds([]);
+      await fetchDeliveries({ page: deliveryPagination.page, query: deliverySearch });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al actualizar masivo.");
+    } finally {
+      setProcessingBulk(false);
+    }
+  }
+
   return (
     <AppShell
       sectionLabel="Modulo"
@@ -464,6 +752,17 @@ export default function AlertasPage() {
                   </Button>
                 </div>
 
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={exportAlertsExcel} className="rounded-xl">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Exportar Excel
+                  </Button>
+                  <Button variant="outline" onClick={exportAlertsPdf} className="rounded-xl">
+                    <FileText className="h-4 w-4" />
+                    Exportar PDF
+                  </Button>
+                </div>
+
                 <div className="rounded-xl border border-slate-200">
                   <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
@@ -534,7 +833,7 @@ export default function AlertasPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleAvisar(row)}
-                                  disabled={!row.client?.phone || row.status !== "PENDIENTE_DE_AVISAR"}
+                                  disabled={!row.client?.phone}
                                   className="h-7 gap-1 px-1.5 text-[10px]"
                                 >
                                   {row.status === "AVISADO" ? (
@@ -627,11 +926,50 @@ export default function AlertasPage() {
                   </select>
                 </div>
 
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleBulkDeliveryAction("received")}
+                    disabled={processingBulk || selectedDeliveryIds.length === 0}
+                    className="rounded-xl"
+                  >
+                    <PackageCheck className="h-4 w-4" />
+                    Marcar recibidos ({selectedDeliveryIds.length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleBulkDeliveryAction("notified")}
+                    disabled={processingBulk || selectedDeliveryIds.length === 0}
+                    className="rounded-xl"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Avisar seleccionados
+                  </Button>
+                  <Button variant="outline" onClick={exportDeliveriesExcel} className="rounded-xl">
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Exportar Excel
+                  </Button>
+                  <Button variant="outline" onClick={exportDeliveriesPdf} className="rounded-xl">
+                    <FileText className="h-4 w-4" />
+                    Exportar PDF
+                  </Button>
+                </div>
+
                 <div className="rounded-xl border border-slate-200">
                   <table className="w-full table-fixed text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
-                        <th className="w-[20%] px-3 py-2.5 font-medium">Cliente</th>
+                        <th className="w-[4%] px-3 py-2.5 font-medium">
+                          <input
+                            type="checkbox"
+                            checked={
+                              deliveryRows.length > 0 &&
+                              deliveryRows.every((row) => selectedDeliveryIds.includes(row.id))
+                            }
+                            onChange={toggleSelectAllVisibleDeliveries}
+                          />
+                        </th>
+                        <th className="w-[18%] px-3 py-2.5 font-medium">Cliente</th>
                         <th className="w-[8%] px-3 py-2.5 font-medium">Dominio</th>
                         <th className="w-[14%] px-3 py-2.5 font-medium">Vehiculo</th>
                         <th className="w-[5%] px-3 py-2.5 font-medium">Tramite</th>
@@ -648,19 +986,26 @@ export default function AlertasPage() {
                     <tbody>
                       {deliveryLoading ? (
                         <tr>
-                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
                             Cargando retiros...
                           </td>
                         </tr>
                       ) : deliveryRows.length === 0 ? (
                         <tr>
-                          <td colSpan={12} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
                             No hay trámites para retiro.
                           </td>
                         </tr>
                       ) : (
                         deliveryRows.map((row) => (
                           <tr key={row.id} className="border-t border-slate-100">
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="checkbox"
+                                checked={selectedDeliveryIds.includes(row.id)}
+                                onChange={() => toggleDeliverySelection(row.id)}
+                              />
+                            </td>
                             <td className="px-3 py-2.5 text-slate-800">
                               <div className="truncate font-medium">
                                 {`${row.client?.lastName || "-"}, ${row.client?.firstName || "-"}`}

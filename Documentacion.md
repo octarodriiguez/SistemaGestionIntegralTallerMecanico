@@ -830,7 +830,7 @@ Funcionalidad actual:
 - `GET /api/catalogos` entrega catalogos para combos.
 
 ### 3) Unificacion visual de modulos
-Se implemento un shell compartido para que todos los modulos mantengan mismo diseño y sidebar persistente.
+Se implemento un shell compartido para que todos los modulos mantengan mismo diseï¿½o y sidebar persistente.
 
 Archivos:
 - `components/layout/app-shell.tsx`
@@ -933,7 +933,7 @@ Observacion pendiente no bloqueante:
 
 ## Bitacora de avances (22-02-2026)
 
-### 1) Modulo Tramites: rediseño funcional y visual
+### 1) Modulo Tramites: rediseï¿½o funcional y visual
 Se reestructuro el formulario principal de `Tramites` para reflejar el flujo operativo real del taller.
 
 Cambios aplicados:
@@ -1144,7 +1144,7 @@ Boton: `Comprobar vencimientos`
 - Recorre los registros filtrados (oblea / PH)
 - Obtiene dominio del cliente
 - Consulta ENARGAS via scraping
-- Compara mes/año de fecha ENARGAS contra mes/año del tramite interno
+- Compara mes/aï¿½o de fecha ENARGAS contra mes/aï¿½o del tramite interno
 - Actualiza estado:
   - `PENDIENTE_DE_AVISAR` si coincide
   - `NO_CORRESPONDE_AVISAR` si no coincide
@@ -1183,7 +1183,7 @@ Boton por fila: `Avisar`
   - consulta por dominio en:
     - `https://www.enargas.gob.ar/secciones/gas-natural-comprimido/consulta-dominio.php`
   - extraccion de ultima fecha valida `dd/MM/yyyy`
-  - helper de comparacion por mes/año
+  - helper de comparacion por mes/aÃ±o
 
 #### SQL de soporte
 - `scripts/sql/2026-02-22_alertas_status.sql`
@@ -1219,12 +1219,12 @@ Observacion:
 - `PRUEBA_HIDRAULICA`
 
 2. Comparacion temporal:
-- Se compara mes y año (no dia) entre:
+- Se compara mes y aï¿½o (no dia) entre:
   - fecha interna del tramite
   - ultima fecha de operacion obtenida de ENARGAS
 
 3. Resultado:
-- Coincide mes/año -> `PENDIENTE_DE_AVISAR`
+- Coincide mes/aï¿½o -> `PENDIENTE_DE_AVISAR`
 - No coincide -> `NO_CORRESPONDE_AVISAR`
 
 4. Preservacion de estado avisado:

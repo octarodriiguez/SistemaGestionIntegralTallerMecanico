@@ -18,8 +18,10 @@ function isPublicPath(pathname: string) {
 function isRoleAllowed(pathname: string, role: AppRole) {
   const officeOnlyPrefixes = ["/avisos", "/alertas", "/distribuidoras", "/comprobantes"];
   const officeOnlyApiPrefixes = ["/api/avisos", "/api/alertas"];
+  const sharedMesaApiPrefixes = ["/api/avisos/retiro", "/api/avisos/retiro/estado"];
 
   if (pathname.startsWith("/api/tramites/oficina")) return role === "OFICINA";
+  if (sharedMesaApiPrefixes.some((prefix) => pathname.startsWith(prefix))) return true;
   if (officeOnlyPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
     return role === "OFICINA";
   }

@@ -29,6 +29,8 @@ export function AppShell({
   const [role, setRole] = useState<AppRole | null>(null);
   const [fullName, setFullName] = useState<string>("");
   const [pendingOfficeCount, setPendingOfficeCount] = useState<number>(0);
+  const [pendingPickupCount, setPendingPickupCount] = useState<number>(0);
+  const [retiredPickupCount, setRetiredPickupCount] = useState<number>(0);
 
   useEffect(() => {
     let mounted = true;
@@ -51,6 +53,8 @@ export function AppShell({
   useEffect(() => {
     if (role !== "OFICINA") {
       setPendingOfficeCount(0);
+      setPendingPickupCount(0);
+      setRetiredPickupCount(0);
       return;
     }
 
@@ -68,6 +72,30 @@ export function AppShell({
 
     fetchPendingCount();
     const interval = setInterval(fetchPendingCount, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [role]);
+
+  useEffect(() => {
+    if (role !== "OFICINA") return;
+
+    let mounted = true;
+    async function fetchPickupSummary() {
+      try {
+        const res = await fetch("/api/avisos/retiro/resumen", { cache: "no-store" });
+        const json = await res.json();
+        if (!mounted || !res.ok) return;
+        setPendingPickupCount(Number(json?.data?.pending ?? 0));
+        setRetiredPickupCount(Number(json?.data?.retired ?? 0));
+      } catch {
+        if (!mounted) return;
+      }
+    }
+
+    fetchPickupSummary();
+    const interval = setInterval(fetchPickupSummary, 30000);
     return () => {
       mounted = false;
       clearInterval(interval);
@@ -134,6 +162,16 @@ export function AppShell({
                       {module.key === "tramites" && role === "OFICINA" && pendingOfficeCount > 0 ? (
                         <span className="inline-flex min-w-5 items-center justify-center rounded-full border border-red-200 bg-red-100 px-1.5 py-[1px] text-[10px] font-semibold leading-3 text-red-700">
                           {pendingOfficeCount}
+                        </span>
+                      ) : null}
+                      {module.key === "avisos" && role === "OFICINA" ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="inline-flex min-w-5 items-center justify-center rounded-full border border-amber-200 bg-amber-100 px-1.5 py-[1px] text-[10px] font-semibold leading-3 text-amber-700">
+                            P {pendingPickupCount}
+                          </span>
+                          <span className="inline-flex min-w-5 items-center justify-center rounded-full border border-emerald-200 bg-emerald-100 px-1.5 py-[1px] text-[10px] font-semibold leading-3 text-emerald-700">
+                            R {retiredPickupCount}
+                          </span>
                         </span>
                       ) : null}
                     </span>

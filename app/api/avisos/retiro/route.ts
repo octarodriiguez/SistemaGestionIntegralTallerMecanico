@@ -94,44 +94,45 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
 
     if (filter === "yesterday") {
-      const { data: latestLoadedRow, error: latestLoadedError } = await supabase
+      const { data: latestRows, error: latestRowsError } = await supabase
         .from("client_procedures")
         .select("created_at")
         .in("procedure_type_id", targetProcedureTypeIds)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(3000);
 
-      if (latestLoadedError) {
+      if (latestRowsError) {
         return NextResponse.json(
           { error: "No se pudo determinar el ultimo dia cargado." },
           { status: 500 },
         );
       }
 
-      if (!latestLoadedRow?.created_at) {
+      const uniqueDayKeys = Array.from(
+        new Set(
+          (latestRows ?? [])
+            .map((row) => (row.created_at || "").slice(0, 10))
+            .filter(Boolean),
+        ),
+      );
+
+      if (uniqueDayKeys.length === 0) {
         return NextResponse.json({
           data: [],
           pagination: { page, pageSize, total: 0, totalPages: 1 },
         });
       }
 
-      const latestDate = new Date(latestLoadedRow.created_at);
-      const dayStart = new Date(
-        Date.UTC(
-          latestDate.getUTCFullYear(),
-          latestDate.getUTCMonth(),
-          latestDate.getUTCDate(),
-          0,
-          0,
-          0,
-          0,
-        ),
-      );
+      // "Cargados ayer" = dia de carga previo al mas reciente con datos,
+      // y si solo existe un dia, usamos ese.
+      const targetDayKey = uniqueDayKeys[1] ?? uniqueDayKeys[0];
+      const dayStart = new Date(`${targetDayKey}T00:00:00.000Z`);
       const dayEnd = new Date(dayStart);
       dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
-      query = query.gte("created_at", dayStart.toISOString()).lt("created_at", dayEnd.toISOString());
+      query = query
+        .gte("created_at", dayStart.toISOString())
+        .lt("created_at", dayEnd.toISOString());
     }
 
     if (!needsClientSideFilter) {
