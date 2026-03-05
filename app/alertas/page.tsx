@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Swal from "sweetalert2";
+import { Document, Page, Text, View, StyleSheet, pdf } from "@react-pdf/renderer";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,35 @@ type Pagination = {
   totalPages: number;
 };
 
+const pdfStyles = StyleSheet.create({
+  page: {
+    padding: 20,
+    fontSize: 9,
+  },
+  title: {
+    fontSize: 14,
+    marginBottom: 10,
+    fontWeight: 700,
+  },
+  row: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+    paddingVertical: 4,
+  },
+  headerRow: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#94a3b8",
+    paddingVertical: 4,
+    backgroundColor: "#f8fafc",
+  },
+  cell: {
+    flex: 1,
+    paddingRight: 4,
+  },
+});
+
 function currentMonthString() {
   const now = new Date();
   const month = `${now.getMonth() + 1}`.padStart(2, "0");
@@ -132,6 +162,13 @@ function formatDate(value: string | null | undefined) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "-";
   return parsed.toLocaleDateString("es-AR");
+}
+
+function getMonthNameEsFromDate(value: string | null | undefined) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("es-AR", { month: "long" }).format(parsed);
 }
 
 function formatAmount(value: number | null | undefined) {
@@ -316,8 +353,12 @@ export default function AlertasPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "No se pudo actualizar estado.");
 
+      const monthName = getMonthNameEsFromDate(row.createdAt).toUpperCase() || "ESTE MES";
+      const domain = (row.vehicle?.domain || "-").toUpperCase();
+      const message = `Hola buenas, le hablo del taller de GNC Cosquin para recordarle que en el mes de ${monthName} se le vence la OBLEA del dominio ${domain}.`;
+
       window.open(
-        `https://api.whatsapp.com/send?phone=${toWhatsappPhone(row.client.phone)}`,
+        `https://api.whatsapp.com/send?phone=${toWhatsappPhone(row.client.phone)}&text=${encodeURIComponent(message)}`,
         "_blank",
       );
       await fetchAlerts({ page: pagination.page, query: search });
@@ -481,7 +522,52 @@ export default function AlertasPage() {
     );
   }
 
-  function exportAlertsPdf() {
+  async function exportAlertsPdf() {
+    const rowsData = rows.map((row) => [
+      `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim() || "-",
+      row.client?.phone || "-",
+      row.vehicle?.domain || "-",
+      row.vehicle ? `${row.vehicle.brand} ${row.vehicle.model}` : "-",
+      procedureLabel(row.procedureType?.code, row.procedureType?.displayName),
+      formatDate(row.createdAt),
+      formatDate(row.enargasLastOperationDate),
+      statusLabel(row.status),
+    ]);
+
+    const doc = (
+      <Document>
+        <Page size="A4" orientation="landscape" style={pdfStyles.page}>
+          <Text style={pdfStyles.title}>
+            Avisos vencimientos - {new Date().toLocaleDateString("es-AR")}
+          </Text>
+          <View style={pdfStyles.headerRow}>
+            {["Cliente", "Telefono", "Dominio", "Vehiculo", "Tramite", "Fecha tramite", "Fecha ENARGAS", "Estado"].map((h) => (
+              <Text key={h} style={pdfStyles.cell}>{h}</Text>
+            ))}
+          </View>
+          {rowsData.map((line, idx) => (
+            <View key={`alert-pdf-${idx}`} style={pdfStyles.row}>
+              {line.map((cell, cellIdx) => (
+                <Text key={`alert-pdf-${idx}-${cellIdx}`} style={pdfStyles.cell}>
+                  {cell}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </Page>
+      </Document>
+    );
+
+    const blob = await pdf(doc).toBlob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `avisos_vencimientos_${new Date().toISOString().slice(0, 10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printAlertsReport() {
     const htmlRows = rows
       .map((row) => {
         const client = `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim();
@@ -501,14 +587,14 @@ export default function AlertasPage() {
 
     const popup = window.open("", "_blank", "width=1200,height=800");
     if (!popup) {
-      toast.error("Habilita ventanas emergentes para exportar PDF.");
+      toast.error("Habilita ventanas emergentes para imprimir.");
       return;
     }
 
     popup.document.write(`
       <html>
         <head>
-          <title>Avisos vencimientos</title>
+          <title>Imprimir avisos vencimientos</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 16px; }
             h1 { font-size: 18px; margin-bottom: 12px; }
@@ -536,7 +622,54 @@ export default function AlertasPage() {
     popup.print();
   }
 
-  function exportDeliveriesPdf() {
+  async function exportDeliveriesPdf() {
+    const rowsData = deliveryRows.map((row) => [
+      `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim() || "-",
+      row.client?.phone || "-",
+      row.vehicle?.domain || "-",
+      row.vehicle ? `${row.vehicle.brand} ${row.vehicle.model}` : "-",
+      procedureLabel(row.procedureType?.code, row.procedureType?.displayName),
+      formatDate(row.createdAt),
+      formatAmount(row.totalAmount),
+      formatAmount(row.amountPaid),
+      formatAmount(Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0)),
+      deliveryStatusLabel(row.status),
+    ]);
+
+    const doc = (
+      <Document>
+        <Page size="A4" orientation="landscape" style={pdfStyles.page}>
+          <Text style={pdfStyles.title}>
+            Avisos retiro - {new Date().toLocaleDateString("es-AR")}
+          </Text>
+          <View style={pdfStyles.headerRow}>
+            {["Cliente", "Telefono", "Dominio", "Vehiculo", "Tramite", "Fecha", "Total", "Abonado", "Saldo", "Estado"].map((h) => (
+              <Text key={h} style={pdfStyles.cell}>{h}</Text>
+            ))}
+          </View>
+          {rowsData.map((line, idx) => (
+            <View key={`delivery-pdf-${idx}`} style={pdfStyles.row}>
+              {line.map((cell, cellIdx) => (
+                <Text key={`delivery-pdf-${idx}-${cellIdx}`} style={pdfStyles.cell}>
+                  {cell}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </Page>
+      </Document>
+    );
+
+    const blob = await pdf(doc).toBlob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `avisos_retiro_${new Date().toISOString().slice(0, 10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function printDeliveriesReport() {
     const htmlRows = deliveryRows
       .map((row) => {
         const client = `${row.client?.lastName || ""}, ${row.client?.firstName || ""}`.trim();
@@ -559,14 +692,14 @@ export default function AlertasPage() {
 
     const popup = window.open("", "_blank", "width=1200,height=800");
     if (!popup) {
-      toast.error("Habilita ventanas emergentes para exportar PDF.");
+      toast.error("Habilita ventanas emergentes para imprimir.");
       return;
     }
 
     popup.document.write(`
       <html>
         <head>
-          <title>Avisos retiro</title>
+          <title>Imprimir avisos retiro</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 16px; }
             h1 { font-size: 18px; margin-bottom: 12px; }
@@ -761,10 +894,13 @@ export default function AlertasPage() {
                     <FileText className="h-4 w-4" />
                     Exportar PDF
                   </Button>
+                  <Button variant="outline" onClick={printAlertsReport} className="rounded-xl">
+                    Imprimir
+                  </Button>
                 </div>
 
                 <div className="rounded-xl border border-slate-200">
-                  <table className="w-full table-fixed text-sm">
+                  <table className="w-full table-auto text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
                         <th className="w-[24%] px-3 py-2.5 font-medium">Cliente</th>
@@ -802,7 +938,7 @@ export default function AlertasPage() {
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-slate-700">
-                              <div className="truncate font-semibold tracking-wide">
+                              <div className="font-semibold tracking-wide whitespace-nowrap">
                                 {row.vehicle?.domain || "-"}
                               </div>
                             </td>
@@ -834,14 +970,18 @@ export default function AlertasPage() {
                                   size="sm"
                                   onClick={() => handleAvisar(row)}
                                   disabled={!row.client?.phone || row.status === "NO_CORRESPONDE_AVISAR"}
-                                  className="h-7 gap-1 px-1.5 text-[10px]"
+                                  className={`h-7 gap-1 px-1.5 text-[10px] ${
+                                    row.status === "AVISADO"
+                                      ? "border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                      : ""
+                                  }`}
                                 >
                                   {row.status === "AVISADO" ? (
                                     <CheckCircle2 className="h-3.5 w-3.5" />
                                   ) : (
                                     <MessageCircle className="h-3.5 w-3.5" />
                                   )}
-                                  Avisar
+                                  {row.status === "AVISADO" ? "Avisado" : "Avisar"}
                                 </Button>
                               </div>
                             </td>
@@ -953,10 +1093,13 @@ export default function AlertasPage() {
                     <FileText className="h-4 w-4" />
                     Exportar PDF
                   </Button>
+                  <Button variant="outline" onClick={printDeliveriesReport} className="rounded-xl">
+                    Imprimir
+                  </Button>
                 </div>
 
                 <div className="rounded-xl border border-slate-200">
-                  <table className="w-full table-fixed text-sm">
+                  <table className="w-full table-auto text-sm">
                     <thead className="bg-slate-100 text-left text-slate-600">
                       <tr>
                         <th className="w-[4%] px-3 py-2.5 font-medium">
@@ -972,27 +1115,24 @@ export default function AlertasPage() {
                         <th className="w-[18%] px-3 py-2.5 font-medium">Cliente</th>
                         <th className="w-[8%] px-3 py-2.5 font-medium">Dominio</th>
                         <th className="w-[14%] px-3 py-2.5 font-medium">Vehiculo</th>
-                        <th className="w-[5%] px-3 py-2.5 font-medium">Tramite</th>
-                        <th className="w-[7%] px-3 py-2.5 font-medium">F. alta</th>
-                        <th className="w-[7%] px-3 py-2.5 font-medium">Total</th>
-                        <th className="w-[7%] px-3 py-2.5 font-medium">Abonado</th>
-                        <th className="w-[7%] px-3 py-2.5 font-medium">Saldo</th>
-                        <th className="w-[6%] px-3 py-2.5 font-medium">Pagado</th>
-                        <th className="w-[6%] px-3 py-2.5 font-medium">Estado</th>
-                        <th className="w-[13%] px-3 py-2.5 font-medium">Obs</th>
-                        <th className="w-[14%] px-3 py-2.5 font-medium">Acciones</th>
+                        <th className="w-[8%] px-3 py-2.5 font-medium">Tramite</th>
+                        <th className="w-[8%] px-3 py-2.5 font-medium">F. alta</th>
+                        <th className="w-[8%] px-3 py-2.5 font-medium">Abonado</th>
+                        <th className="w-[8%] px-3 py-2.5 font-medium">Estado</th>
+                        <th className="w-[18%] px-3 py-2.5 font-medium">Obs</th>
+                        <th className="w-[16%] px-3 py-2.5 font-medium">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {deliveryLoading ? (
                         <tr>
-                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                             Cargando retiros...
                           </td>
                         </tr>
                       ) : deliveryRows.length === 0 ? (
                         <tr>
-                          <td colSpan={13} className="px-4 py-8 text-center text-slate-500">
+                          <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
                             No hay trámites para retiro.
                           </td>
                         </tr>
@@ -1015,7 +1155,7 @@ export default function AlertasPage() {
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-slate-700">
-                              <div className="truncate font-semibold tracking-wide">
+                              <div className="font-semibold tracking-wide whitespace-nowrap">
                                 {row.vehicle?.domain || "-"}
                               </div>
                             </td>
@@ -1032,22 +1172,7 @@ export default function AlertasPage() {
                             <td className="px-3 py-2.5 text-slate-700">
                               <div className="truncate">{formatDate(row.createdAt)}</div>
                             </td>
-                            <td className="px-3 py-2.5 text-slate-700">{formatAmount(row.totalAmount)}</td>
                             <td className="px-3 py-2.5 text-slate-700">{formatAmount(row.amountPaid)}</td>
-                            <td className="px-3 py-2.5 font-semibold text-slate-700">
-                              {formatAmount(Math.max((row.totalAmount ?? 0) - (row.amountPaid ?? 0), 0))}
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <span
-                                className={`inline-flex rounded-full border px-1.5 py-[1px] text-[9px] font-semibold leading-3 ${
-                                  row.paid
-                                    ? "border-emerald-200 bg-emerald-100 text-emerald-700"
-                                    : "border-amber-200 bg-amber-100 text-amber-700"
-                                }`}
-                              >
-                                {row.paid ? "SI" : "NO"}
-                              </span>
-                            </td>
                             <td className="px-3 py-2.5">
                               <span
                                 className={`inline-flex rounded-full border px-1.5 py-[1px] text-[9px] font-semibold leading-3 ${deliveryStatusClass(row.status)}`}
@@ -1076,10 +1201,14 @@ export default function AlertasPage() {
                                   variant="outline"
                                   size="sm"
                                   onClick={() => handleDeliveryAction(row, "notified")}
-                                  className="h-7 gap-1 px-2 text-[10px]"
+                                  className={`h-7 gap-1 px-2 text-[10px] ${
+                                    row.status === "AVISADO_RETIRO"
+                                      ? "border-emerald-200 bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                                      : ""
+                                  }`}
                                 >
                                   <MessageCircle className="h-3.5 w-3.5" />
-                                  Avisar
+                                  {row.status === "AVISADO_RETIRO" ? "Avisado" : "Avisar"}
                                 </Button>
                                 <Button
                                   variant="outline"
