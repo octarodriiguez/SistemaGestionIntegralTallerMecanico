@@ -7,6 +7,15 @@ import {
 
 const TARGET_CODES = ["RENOVACION_OBLEA", "PRUEBA_HIDRAULICA"];
 
+function extractDomainFromNotes(notes: string | null | undefined): string | null {
+  if (!notes) return null;
+  const tagged = notes.match(/\[DOMINIO:([A-Z0-9-]+)\]/i);
+  if (tagged?.[1]) return tagged[1].toUpperCase();
+  const legacy = notes.match(/dominio:\s*([A-Z0-9-]+)/i);
+  if (legacy?.[1]) return legacy[1].toUpperCase();
+  return null;
+}
+
 function getMonthRange(date: string) {
   const [yearText, monthText] = date.slice(0, 7).split("-");
   const year = Number(yearText);
@@ -68,7 +77,7 @@ export async function POST(request: Request) {
 
     let query = supabase
       .from("client_procedures")
-      .select("id, client_id, created_at")
+      .select("id, client_id, created_at, notes")
       .in("procedure_type_id", targetProcedureTypeIds)
       .order("created_at", { ascending: false });
 
@@ -139,13 +148,15 @@ export async function POST(request: Request) {
       (existingStatuses ?? []).map((item: any) => [item.procedure_id, item.status]),
     );
 
-    const uniqueDomains = Array.from(
-      new Set(
-        procedureRows
-          .flatMap((item: any) => domainsByClient.get(item.client_id) ?? [])
-          .filter((value): value is string => Boolean(value)),
-      ),
-    );
+    const selectedDomainByProcedure = new Map<string, string>();
+    for (const item of procedureRows as any[]) {
+      const domainFromNotes = extractDomainFromNotes(item.notes);
+      const clientDomains = domainsByClient.get(item.client_id) ?? [];
+      const selectedDomain = (domainFromNotes || clientDomains[0] || "").toUpperCase();
+      if (selectedDomain) selectedDomainByProcedure.set(item.id, selectedDomain);
+    }
+
+    const uniqueDomains = Array.from(new Set(Array.from(selectedDomainByProcedure.values())));
 
     const domainResultMap = new Map<
       string,
@@ -165,14 +176,7 @@ export async function POST(request: Request) {
 
     const nowIso = new Date().toISOString();
     const rows = procedureRows.map((item: any) => {
-      const clientDomains = domainsByClient.get(item.client_id) ?? [];
-      const selectedDomain =
-        clientDomains.find((candidate) => {
-          const hit = domainResultMap.get(candidate);
-          return Boolean(hit?.lastOperationDate);
-        }) ??
-        clientDomains[0] ??
-        null;
+      const selectedDomain = selectedDomainByProcedure.get(item.id) ?? null;
       const domainResult = selectedDomain ? domainResultMap.get(selectedDomain) : undefined;
       const enargasDate = domainResult?.lastOperationDate ?? null;
       const matchesMonthYear = sameMonthYearFromStrings(enargasDate, item.created_at);

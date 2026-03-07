@@ -123,9 +123,8 @@ export async function GET(request: Request) {
         });
       }
 
-      // "Cargados ayer" = dia de carga previo al mas reciente con datos,
-      // y si solo existe un dia, usamos ese.
-      const targetDayKey = uniqueDayKeys[1] ?? uniqueDayKeys[0];
+      // Tomamos el ultimo dia con carga real de tramites.
+      const targetDayKey = uniqueDayKeys[0];
       const dayStart = new Date(`${targetDayKey}T00:00:00.000Z`);
       const dayEnd = new Date(dayStart);
       dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);

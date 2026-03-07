@@ -1060,7 +1060,7 @@ export default function AlertasPage() {
                     onChange={(e) => setDeliveryFilter(e.target.value as "yesterday" | "pending" | "all")}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                   >
-                    <option value="yesterday">Cargados ayer</option>
+                    <option value="yesterday">Ultimo dia cargado</option>
                     <option value="pending">Todos los pendientes</option>
                     <option value="all">Todos</option>
                   </select>

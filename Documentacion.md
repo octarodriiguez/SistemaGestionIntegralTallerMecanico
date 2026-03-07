@@ -1396,3 +1396,43 @@ Archivo modificado:
 #### Commit de este bloque
 - Commit subido a `main`:
   - `731fc09`
+
+### 12) Ajustes de Avisos + avance de Comprobantes (commit `19b75a8`)
+
+#### Avisos: estado visual de envio
+- Se unifico el comportamiento visual del boton `Avisar` para evitar confusion operativa.
+- Cuando el aviso ya fue enviado:
+  - En `Vencimientos` (`status = AVISADO`), el boton se muestra en verde y texto `Avisado`.
+  - En `Retiro de tramites` (`status = AVISADO_RETIRO`), el boton tambien se muestra en verde y texto `Avisado`.
+- Objetivo: identificar rapido que registros ya fueron notificados por WhatsApp.
+
+Archivo:
+- `app/alertas/page.tsx`
+
+#### Comprobantes: primera version funcional
+- Se reemplazo el placeholder de `Comprobantes` por una vista operativa con datos reales de tramites.
+- Funcionalidades agregadas:
+  - Busqueda por persona o dominio.
+  - Filtro por estado:
+    - `Todos`
+    - `Retirados`
+    - `Pendientes`
+  - Contadores visibles:
+    - total retirados
+    - total pendientes
+  - Tabla con columnas:
+    - Cliente
+    - Dominio
+    - Vehiculo
+    - Tramite
+    - Fecha
+    - Estado (`RETIRADO` / `PENDIENTE`)
+- Fuente de datos:
+  - reutiliza endpoint de retiros (`/api/avisos/retiro`) en modo `all` para trazabilidad de estado.
+
+Archivo:
+- `app/comprobantes/page.tsx`
+
+#### Commit de este bloque
+- Commit subido a `main`:
+  - `19b75a8`
