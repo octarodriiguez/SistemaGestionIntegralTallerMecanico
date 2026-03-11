@@ -34,7 +34,7 @@ const initialForm = {
 
 const FIXED_TOTAL_BY_CODE: Record<string, number> = {
   RENOVACION_OBLEA: 30000,
-  PRUEBA_HIDRAULICA: 180000,
+  PRUEBA_HIDRAULICA: 190000,
 };
 
 function getProcedureOptionLabel(item: ProcedureType) {
