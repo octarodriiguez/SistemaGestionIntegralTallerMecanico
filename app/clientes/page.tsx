@@ -98,6 +98,7 @@ function stripMetaTags(notes: string | null | undefined) {
   return notes
     .replace(/\[DOMINIO:[^\]]+\]/gi, "")
     .replace(/\[TEL:[^\]]+\]/gi, "")
+    .replace(/\[TUBOS:[^\]]+\]/gi, "")
     .trim();
 }
 
@@ -568,7 +569,7 @@ export default function ClientesPage() {
 
       {openEditModal ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-2 pt-4">
-          <div className="w-full max-w-5xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="h-[92vh] w-[96vw] rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 p-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Editar registro</h3>
@@ -578,35 +579,37 @@ export default function ClientesPage() {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="space-y-3 p-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <input value={editForm.firstName} onChange={(e) => setEditForm((prev) => ({ ...prev, firstName: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Nombre" />
-                <input value={editForm.lastName} onChange={(e) => setEditForm((prev) => ({ ...prev, lastName: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Apellido" />
-                <input value={editForm.phone} onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Telefono (opcional)" />
-                <input value={editForm.brand} onChange={(e) => setEditForm((prev) => ({ ...prev, brand: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Marca" />
-                <input value={editForm.model} onChange={(e) => setEditForm((prev) => ({ ...prev, model: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Modelo" />
-                <input value={editForm.domain} onChange={(e) => setEditForm((prev) => ({ ...prev, domain: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Dominio" />
-                <select value={editForm.procedureTypeId} onChange={(e) => setEditForm((prev) => ({ ...prev, procedureTypeId: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400">
-                  <option value="">Tipo de tramite...</option>
-                  {procedureTypes.map((item) => (
-                    <option key={item.id} value={item.id}>{item.display_name}</option>
-                  ))}
-                </select>
-                <select value={editForm.distributorId} onChange={(e) => setEditForm((prev) => ({ ...prev, distributorId: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400">
-                  <option value="">Distribuidora (opcional)</option>
-                  {distributors.map((item) => (
-                    <option key={item.id} value={item.id}>{item.name}</option>
-                  ))}
-                </select>
-                <input value={editForm.totalAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, totalAmount: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Total" />
-                <input value={editForm.amountPaid} onChange={(e) => setEditForm((prev) => ({ ...prev, amountPaid: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Abonado" />
-              </div>
-              <textarea value={editForm.procedureNotes} onChange={(e) => setEditForm((prev) => ({ ...prev, procedureNotes: e.target.value.toUpperCase() }))} className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Observaciones del tramite" />
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setOpenEditModal(false)}>Cancelar</Button>
-                <Button onClick={handleSaveRecordEdit} disabled={savingEdit} className="rounded-xl bg-slate-900 text-white hover:bg-slate-800">
-                  {savingEdit ? "Guardando..." : "Guardar cambios"}
-                </Button>
+            <div className="h-[calc(92vh-78px)] overflow-auto p-4">
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <input value={editForm.firstName} onChange={(e) => setEditForm((prev) => ({ ...prev, firstName: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Nombre" />
+                  <input value={editForm.lastName} onChange={(e) => setEditForm((prev) => ({ ...prev, lastName: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Apellido" />
+                  <input value={editForm.phone} onChange={(e) => setEditForm((prev) => ({ ...prev, phone: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Telefono (opcional)" />
+                  <input value={editForm.brand} onChange={(e) => setEditForm((prev) => ({ ...prev, brand: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Marca" />
+                  <input value={editForm.model} onChange={(e) => setEditForm((prev) => ({ ...prev, model: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Modelo" />
+                  <input value={editForm.domain} onChange={(e) => setEditForm((prev) => ({ ...prev, domain: e.target.value.toUpperCase() }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Dominio" />
+                  <select value={editForm.procedureTypeId} onChange={(e) => setEditForm((prev) => ({ ...prev, procedureTypeId: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400">
+                    <option value="">Tipo de tramite...</option>
+                    {procedureTypes.map((item) => (
+                      <option key={item.id} value={item.id}>{item.display_name}</option>
+                    ))}
+                  </select>
+                  <select value={editForm.distributorId} onChange={(e) => setEditForm((prev) => ({ ...prev, distributorId: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400">
+                    <option value="">Distribuidora (opcional)</option>
+                    {distributors.map((item) => (
+                      <option key={item.id} value={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                  <input value={editForm.totalAmount} onChange={(e) => setEditForm((prev) => ({ ...prev, totalAmount: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Total" />
+                  <input value={editForm.amountPaid} onChange={(e) => setEditForm((prev) => ({ ...prev, amountPaid: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Abonado" />
+                </div>
+                <textarea value={editForm.procedureNotes} onChange={(e) => setEditForm((prev) => ({ ...prev, procedureNotes: e.target.value.toUpperCase() }))} className="min-h-20 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400" placeholder="Observaciones del tramite" />
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setOpenEditModal(false)}>Cancelar</Button>
+                  <Button onClick={handleSaveRecordEdit} disabled={savingEdit} className="rounded-xl bg-slate-900 text-white hover:bg-slate-800">
+                    {savingEdit ? "Guardando..." : "Guardar cambios"}
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

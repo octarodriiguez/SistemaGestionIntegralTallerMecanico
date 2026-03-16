@@ -2,6 +2,16 @@
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 const TARGET_CODES = ["RENOVACION_OBLEA", "PRUEBA_HIDRAULICA"];
+const TIME_ZONE = "America/Argentina/Buenos_Aires";
+
+function getDateKeyInTimeZone(date: Date, timeZone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 function extractDomainFromNotes(notes: string | null | undefined): string | null {
   if (!notes) return null;
@@ -94,44 +104,18 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
 
     if (filter === "yesterday") {
-      const { data: latestRows, error: latestRowsError } = await supabase
-        .from("client_procedures")
-        .select("created_at")
-        .in("procedure_type_id", targetProcedureTypeIds)
-        .order("created_at", { ascending: false })
-        .limit(3000);
+      const nowInTz = new Date(new Date().toLocaleString("en-US", { timeZone: TIME_ZONE }));
+      const yesterdayInTz = new Date(nowInTz);
+      yesterdayInTz.setDate(yesterdayInTz.getDate() - 1);
 
-      if (latestRowsError) {
-        return NextResponse.json(
-          { error: "No se pudo determinar el ultimo dia cargado." },
-          { status: 500 },
-        );
-      }
+      const targetDayKey = getDateKeyInTimeZone(yesterdayInTz, TIME_ZONE);
+      const nextDay = new Date(yesterdayInTz);
+      nextDay.setDate(nextDay.getDate() + 1);
 
-      const uniqueDayKeys = Array.from(
-        new Set(
-          (latestRows ?? [])
-            .map((row) => (row.created_at || "").slice(0, 10))
-            .filter(Boolean),
-        ),
-      );
+      const dayStartIso = `${targetDayKey}T00:00:00-03:00`;
+      const dayEndIso = `${getDateKeyInTimeZone(nextDay, TIME_ZONE)}T00:00:00-03:00`;
 
-      if (uniqueDayKeys.length === 0) {
-        return NextResponse.json({
-          data: [],
-          pagination: { page, pageSize, total: 0, totalPages: 1 },
-        });
-      }
-
-      // Tomamos el ultimo dia con carga real de tramites.
-      const targetDayKey = uniqueDayKeys[0];
-      const dayStart = new Date(`${targetDayKey}T00:00:00.000Z`);
-      const dayEnd = new Date(dayStart);
-      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
-
-      query = query
-        .gte("created_at", dayStart.toISOString())
-        .lt("created_at", dayEnd.toISOString());
+      query = query.gte("created_at", dayStartIso).lt("created_at", dayEndIso);
     }
 
     if (!needsClientSideFilter) {

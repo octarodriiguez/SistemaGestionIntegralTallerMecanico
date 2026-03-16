@@ -9,7 +9,7 @@ export async function GET() {
       await Promise.all([
         supabase
           .from("procedure_types")
-          .select("id, code, display_name, requires_distributor")
+          .select("id, code, display_name, requires_distributor, current_price")
           .order("display_name", { ascending: true }),
         supabase.from("distributors").select("id, name").order("name", { ascending: true }),
       ]);
