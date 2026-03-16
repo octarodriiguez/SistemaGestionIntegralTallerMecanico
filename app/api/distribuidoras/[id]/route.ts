@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } },
-) {
+export async function GET(request: Request, context: any) {
   try {
     const supabase = getSupabaseServerClient();
+    const { params } = context ?? {};
     const { data, error } = await supabase
       .from("distributors")
       .select("id, name, phone, created_at")
-      .eq("id", params.id)
+      .eq("id", params?.id)
       .single();
 
     if (error) {
@@ -31,13 +29,11 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: { id: string } },
-) {
+export async function PATCH(request: Request, context: any) {
   try {
     const supabase = getSupabaseServerClient();
     const body = await request.json();
+    const { params } = context ?? {};
 
     const name = String(body.name ?? "").trim();
     if (!name) {
@@ -53,7 +49,7 @@ export async function PATCH(
     const { error } = await supabase
       .from("distributors")
       .update(payload)
-      .eq("id", params.id);
+      .eq("id", params?.id);
 
     if (error) {
       console.error("PATCH /api/distribuidoras/[id] error:", error);
@@ -63,7 +59,7 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json({ data: { id: params.id } });
+    return NextResponse.json({ data: { id: params?.id } });
   } catch (error) {
     console.error("PATCH /api/distribuidoras/[id] error:", error);
     return NextResponse.json(
@@ -73,17 +69,15 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } },
-) {
+export async function DELETE(request: Request, context: any) {
   try {
     const supabase = getSupabaseServerClient();
+    const { params } = context ?? {};
 
     const { count, error: countError } = await supabase
       .from("distributor_transactions")
       .select("id", { count: "exact", head: true })
-      .eq("distributor_id", params.id);
+      .eq("distributor_id", params?.id);
 
     if (countError) {
       console.error("DELETE /api/distribuidoras/[id] count error:", countError);
@@ -100,7 +94,7 @@ export async function DELETE(
       );
     }
 
-    const { error } = await supabase.from("distributors").delete().eq("id", params.id);
+    const { error } = await supabase.from("distributors").delete().eq("id", params?.id);
 
     if (error) {
       console.error("DELETE /api/distribuidoras/[id] error:", error);
@@ -110,7 +104,7 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ data: { id: params.id } });
+    return NextResponse.json({ data: { id: params?.id } });
   } catch (error) {
     console.error("DELETE /api/distribuidoras/[id] error:", error);
     return NextResponse.json(

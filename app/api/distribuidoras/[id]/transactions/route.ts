@@ -23,12 +23,10 @@ function isFutureDate(value: string) {
   return date.getTime() > now.getTime();
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } },
-) {
+export async function GET(request: Request, context: any) {
   try {
     const supabase = getSupabaseServerClient();
+    const { params } = context ?? {};
     const { searchParams } = new URL(request.url);
 
     const page = Math.max(Number(searchParams.get("page") ?? "1") || 1, 1);
@@ -47,7 +45,7 @@ export async function GET(
         "id, distributor_id, type, description, amount, payment_method, quantity, unit_price, transaction_date, notes",
         { count: "exact" },
       )
-      .eq("distributor_id", params.id)
+      .eq("distributor_id", params?.id)
       .order("transaction_date", { ascending: true });
 
     if (typeFilter) {
@@ -129,13 +127,11 @@ export async function GET(
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: { id: string } },
-) {
+export async function POST(request: Request, context: any) {
   try {
     const supabase = getSupabaseServerClient();
     const body = await request.json();
+    const { params } = context ?? {};
 
     const type = String(body.type ?? "").toUpperCase();
     if (!VALID_TYPES.includes(type as (typeof VALID_TYPES)[number])) {
@@ -160,7 +156,7 @@ export async function POST(
       }
 
       const { error } = await supabase.from("distributor_transactions").insert({
-        distributor_id: params.id,
+        distributor_id: params?.id,
         type: "PURCHASE",
         description: description.toUpperCase(),
         amount,
@@ -194,7 +190,7 @@ export async function POST(
       }
 
       const { error } = await supabase.from("distributor_transactions").insert({
-        distributor_id: params.id,
+        distributor_id: params?.id,
         type: "PAYMENT",
         description: description.toUpperCase(),
         amount,
