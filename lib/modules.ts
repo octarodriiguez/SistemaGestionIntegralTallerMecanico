@@ -3,6 +3,7 @@ import {
   ClipboardList,
   FileText,
   HandCoins,
+  Settings,
   LayoutGrid,
   Users,
 } from "lucide-react";
@@ -52,12 +53,19 @@ export const appModules = [
     description: "Recibos, presupuestos y garantias en formato PDF.",
     icon: FileText,
   },
+  {
+    key: "configuracion",
+    href: "/configuracion",
+    title: "Configuracion",
+    description: "Parametros y ajustes generales del sistema.",
+    icon: Settings,
+  },
 ] as const;
 
 export function getModulesByRole(role: AppRole | null | undefined) {
   if (role === "OFICINA") return appModules;
   return appModules.filter(
     (module) =>
-      !["avisos", "distribuidoras", "comprobantes"].includes(module.key),
+      !["avisos", "distribuidoras", "comprobantes", "configuracion"].includes(module.key),
   );
 }

@@ -185,6 +185,7 @@ function stripMetaTags(notes: string | null | undefined) {
     .replace(/\[DOMINIO:[^\]]+\]/gi, "")
     .replace(/\[TEL:[^\]]+\]/gi, "")
     .replace(/\[TUBOS:[^\]]+\]/gi, "")
+    .replace(/\[DESC:[^\]]+\]/gi, "")
     .trim();
 }
 

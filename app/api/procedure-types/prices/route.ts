@@ -27,10 +27,16 @@ export async function PATCH(request: Request) {
       updated_at: new Date().toISOString(),
     }));
 
-    const { error } = await supabase
-      .from("procedure_types")
-      .upsert(updates, { onConflict: "code" });
+    const results = await Promise.all(
+      updates.map((item) =>
+        supabase
+          .from("procedure_types")
+          .update({ current_price: item.current_price, updated_at: item.updated_at })
+          .eq("code", item.code),
+      ),
+    );
 
+    const error = results.find((result) => result.error)?.error;
     if (error) {
       console.error("PATCH /api/procedure-types/prices error:", error);
       return NextResponse.json(
@@ -48,4 +54,3 @@ export async function PATCH(request: Request) {
     );
   }
 }
-

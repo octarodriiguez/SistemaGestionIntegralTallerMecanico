@@ -1436,3 +1436,27 @@ Archivo:
 #### Commit de este bloque
 - Commit subido a `main`:
   - `19b75a8`
+
+## 2026-03-16
+
+### Cambios generales
+- Se agrego campo **Descuento** en alta de tramites y se guarda como tag [DESC] en observaciones.
+- Se agrego campo **Cantidad de tubos** para PH (tag [TUBOS]).
+- Ajuste de filtros de retiro: opcion **Dia anterior** (fecha anterior real) en avisos de retiro.
+- Formulario de edicion en Clientes ahora carga catalogos antes de abrir (muestra distribuidora y tipo).
+
+### Configuracion de precios
+- Nuevo modulo **Configuracion** para editar precios de Oblea y PH (se retiro del alta).
+- Endpoint de precios ahora **update por code** (no upsert) para evitar errores de columnas NOT NULL.
+
+### Distribuidoras / Cuenta corriente
+- Nuevo modulo completo de Distribuidoras: listado, detalle y alta.
+- Endpoints: /api/distribuidoras, /api/distribuidoras/[id], /api/distribuidoras/[id]/transactions.
+- Tabla de transacciones con filtros, paginacion, totales y export Excel/PDF.
+- Cards del listado con estilo blanco (igual al dashboard).
+- En detalle: panel de distribuidora a la derecha, botones **Ingreso** (verde, flecha abajo) y **Pago** (rojo, flecha arriba).
+
+### Compatibilidad DB actual
+- Se ajustaron endpoints y formularios de distribuidoras para usar solo 
+ame y phone cuando faltan columnas opcionales.
+

@@ -27,6 +27,7 @@ const initialForm = {
   distributorId: "",
   totalAmount: "",
   amountPaid: "",
+  discountAmount: "",
   procedureNotes: "",
   phTubes: "",
   brand: "",
@@ -64,11 +65,6 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
   const [procedureTypes, setProcedureTypes] = useState<ProcedureType[]>([]);
   const [distributors, setDistributors] = useState<Distributor[]>([]);
   const [saving, setSaving] = useState(false);
-  const [priceForm, setPriceForm] = useState({
-    RENOVACION_OBLEA: "",
-    PRUEBA_HIDRAULICA: "",
-  });
-  const [savingPrices, setSavingPrices] = useState(false);
 
   useEffect(() => {
     fetchCatalogs();
@@ -81,22 +77,6 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
       const json = await res.json();
       const nextProcedureTypes = json.data?.procedureTypes ?? [];
       setProcedureTypes(nextProcedureTypes);
-      const priceMap = nextProcedureTypes.reduce(
-        (acc: Record<string, string>, item: ProcedureType) => {
-          if (item.code === "RENOVACION_OBLEA" || item.code === "PRUEBA_HIDRAULICA") {
-            acc[item.code] =
-              item.current_price !== null && item.current_price !== undefined
-                ? String(item.current_price)
-                : "";
-          }
-          return acc;
-        },
-        { RENOVACION_OBLEA: "", PRUEBA_HIDRAULICA: "" },
-      );
-      setPriceForm({
-        RENOVACION_OBLEA: priceMap.RENOVACION_OBLEA ?? "",
-        PRUEBA_HIDRAULICA: priceMap.PRUEBA_HIDRAULICA ?? "",
-      });
       setDistributors(json.data?.distributors ?? []);
     } catch (error) {
       console.error(error);
@@ -134,48 +114,31 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
     }));
   }
 
-  async function handleSavePrices() {
-    const oblea = Number(priceForm.RENOVACION_OBLEA || 0);
-    const ph = Number(priceForm.PRUEBA_HIDRAULICA || 0);
-
-    if (Number.isNaN(oblea) || Number.isNaN(ph)) {
-      toast.error("Precio invalido.");
-      return;
-    }
-
-    setSavingPrices(true);
-    try {
-      const res = await fetch("/api/procedure-types/prices", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prices: [
-            { code: "RENOVACION_OBLEA", price: oblea },
-            { code: "PRUEBA_HIDRAULICA", price: ph },
-          ],
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "No se pudieron guardar los precios.");
-      toast.success("Precios actualizados.");
-      await fetchCatalogs();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al guardar precios.");
-    } finally {
-      setSavingPrices(false);
-    }
-  }
-
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
     try {
       const totalAmountNumber = Number(form.totalAmount || 0);
       const amountPaidNumber = Number(form.amountPaid || 0);
+      const discountNumber = Number(form.discountAmount || 0);
+
+      if (Number.isNaN(discountNumber) || discountNumber < 0) {
+        throw new Error("Descuento invalido.");
+      }
+      if (discountNumber > totalAmountNumber) {
+        throw new Error("El descuento no puede ser mayor al total.");
+      }
+
+      const finalTotal = Math.max(totalAmountNumber - discountNumber, 0);
       const isPh = selectedProcedureType?.code === "PRUEBA_HIDRAULICA";
-      const normalizedNotes = isPh
+      let normalizedNotes = isPh
         ? upsertNoteTag(form.procedureNotes, "TUBOS", form.phTubes.trim())
         : upsertNoteTag(form.procedureNotes, "TUBOS", "");
+      normalizedNotes = upsertNoteTag(
+        normalizedNotes,
+        "DESC",
+        discountNumber > 0 ? String(discountNumber) : "",
+      );
 
       const payload = {
         firstName: form.firstName,
@@ -184,8 +147,8 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
         procedureTypeId: form.procedureTypeId,
         distributorId: form.distributorId,
         procedureNotes: normalizedNotes,
-        paid: amountPaidNumber >= totalAmountNumber && totalAmountNumber > 0,
-        totalAmount: totalAmountNumber,
+        paid: amountPaidNumber >= finalTotal && finalTotal > 0,
+        totalAmount: finalTotal,
         amountPaid: amountPaidNumber,
         vehicle: {
           brand: form.brand,
@@ -238,39 +201,6 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-          Precios de tramites
-        </p>
-        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_160px]">
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={priceForm.RENOVACION_OBLEA}
-            onChange={(e) => setPriceForm((prev) => ({ ...prev, RENOVACION_OBLEA: e.target.value }))}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            placeholder="Precio oblea"
-          />
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={priceForm.PRUEBA_HIDRAULICA}
-            onChange={(e) => setPriceForm((prev) => ({ ...prev, PRUEBA_HIDRAULICA: e.target.value }))}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            placeholder="Precio PH"
-          />
-          <Button
-            type="button"
-            onClick={handleSavePrices}
-            disabled={savingPrices}
-            className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
-          >
-            {savingPrices ? "Guardando..." : "Guardar precios"}
-          </Button>
-        </div>
-      </div>
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
           Datos del cliente
@@ -390,6 +320,16 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
             onChange={(e) => setForm((prev) => ({ ...prev, totalAmount: e.target.value }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none read-only:bg-slate-100 focus:border-slate-400"
             placeholder="Total a pagar"
+          />
+
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={form.discountAmount}
+            onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            placeholder="Descuento (opcional)"
           />
 
           <input

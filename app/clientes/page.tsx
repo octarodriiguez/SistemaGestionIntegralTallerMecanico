@@ -99,6 +99,7 @@ function stripMetaTags(notes: string | null | undefined) {
     .replace(/\[DOMINIO:[^\]]+\]/gi, "")
     .replace(/\[TEL:[^\]]+\]/gi, "")
     .replace(/\[TUBOS:[^\]]+\]/gi, "")
+    .replace(/\[DESC:[^\]]+\]/gi, "")
     .trim();
 }
 
@@ -215,8 +216,11 @@ export default function ClientesPage() {
     await fetchProcedures({ page: 1 });
   }
 
-  function openEditRecord(row: ProcedureRow) {
+  async function openEditRecord(row: ProcedureRow) {
     if (!row.client?.id) return;
+    if (procedureTypes.length === 0 || distributors.length === 0) {
+      await fetchCatalogs();
+    }
     setEditForm({
       procedureId: row.id,
       clientId: row.client.id,
