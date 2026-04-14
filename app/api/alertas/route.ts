@@ -101,6 +101,38 @@ export async function GET(request: Request) {
       );
     }
 
+    // When filtering by status, we need to resolve matching procedure IDs first
+    // because the status lives in a separate table (procedure_alert_status).
+    let statusFilterIds: string[] | null = null;
+    if (status) {
+      if (status === "PENDIENTE_DE_AVISAR") {
+        // "PENDIENTE" means either explicitly set OR no row in procedure_alert_status yet.
+        // Fetch all IDs that have a non-pending status so we can exclude them.
+        const { data: nonPendingRows } = await supabase
+          .from("procedure_alert_status")
+          .select("procedure_id")
+          .neq("status", "PENDIENTE_DE_AVISAR");
+        const excludeIds = new Set((nonPendingRows ?? []).map((r: any) => r.procedure_id));
+
+        // We'll handle this by fetching all matching procedures and filtering in memory below.
+        // Mark with a sentinel so we know to exclude non-pending IDs.
+        statusFilterIds = null; // handled post-fetch
+      } else {
+        // For AVISADO / NO_CORRESPONDE_AVISAR: fetch only procedures with that exact status.
+        const { data: matchedStatuses } = await supabase
+          .from("procedure_alert_status")
+          .select("procedure_id")
+          .eq("status", status);
+        statusFilterIds = (matchedStatuses ?? []).map((r: any) => r.procedure_id);
+        if (statusFilterIds.length === 0) {
+          return NextResponse.json({
+            data: [],
+            pagination: { page, pageSize, total: 0, totalPages: 1 },
+          });
+        }
+      }
+    }
+
     let query = supabase
       .from("client_procedures")
       .select(
@@ -136,6 +168,11 @@ export async function GET(request: Request) {
         });
       }
       query = query.in("client_id", allClientIds);
+    }
+
+    // Apply status filter at the DB level (pre-pagination) for non-pending statuses
+    if (statusFilterIds !== null) {
+      query = query.in("id", statusFilterIds);
     }
 
     let { data, error, count } = await query;
@@ -238,8 +275,10 @@ export async function GET(request: Request) {
       };
     });
 
-    if (status) {
-      mapped = mapped.filter((item) => item.status === status);
+    // For PENDIENTE_DE_AVISAR we still need in-memory filtering because
+    // procedures with no row in procedure_alert_status default to PENDIENTE.
+    if (status === "PENDIENTE_DE_AVISAR") {
+      mapped = mapped.filter((item) => item.status === "PENDIENTE_DE_AVISAR");
       count = mapped.length;
     }
 

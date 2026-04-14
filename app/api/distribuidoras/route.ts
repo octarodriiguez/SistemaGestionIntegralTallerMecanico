@@ -73,11 +73,21 @@ export async function GET() {
         const amount = Number(tx.amount ?? 0);
         return tx.type === "PURCHASE" ? acc + amount : acc - amount;
       }, 0);
+      const lastTxDate = txList.length > 0 ? txList[0].transaction_date : null;
       return {
         ...item,
         balance,
         lastTransactions: txList.slice(0, 3),
+        lastTxDate,
       };
+    });
+
+    // Sort: distributors with recent transactions first
+    response.sort((a, b) => {
+      if (!a.lastTxDate && !b.lastTxDate) return a.name.localeCompare(b.name);
+      if (!a.lastTxDate) return 1;
+      if (!b.lastTxDate) return -1;
+      return new Date(b.lastTxDate).getTime() - new Date(a.lastTxDate).getTime();
     });
 
     return NextResponse.json({ data: response });

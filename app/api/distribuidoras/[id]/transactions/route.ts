@@ -15,6 +15,7 @@ type TransactionRow = {
   unit_price: number | null;
   transaction_date: string;
   notes: string | null;
+  created_at: string;
 };
 
 function isFutureDate(value: string) {
@@ -42,11 +43,12 @@ export async function GET(request: Request, context: any) {
     let queryBuilder = supabase
       .from("distributor_transactions")
       .select(
-        "id, distributor_id, type, description, amount, payment_method, quantity, unit_price, transaction_date, notes",
+        "id, distributor_id, type, description, amount, payment_method, quantity, unit_price, transaction_date, notes, created_at",
         { count: "exact" },
       )
       .eq("distributor_id", params?.id)
-      .order("transaction_date", { ascending: true });
+      .order("transaction_date", { ascending: true })
+      .order("created_at", { ascending: true });
 
     if (typeFilter) {
       queryBuilder = queryBuilder.eq("type", typeFilter);
@@ -89,12 +91,13 @@ export async function GET(request: Request, context: any) {
         unitPrice: row.unit_price,
         transactionDate: row.transaction_date,
         notes: row.notes,
+        createdAt: row.created_at,
         runningBalance: running,
       };
     });
 
     const sortedDesc = [...withBalance].sort(
-      (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime(),
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
 
     const from = (page - 1) * pageSize;

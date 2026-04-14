@@ -2,5 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "functions": {
+    "app/api/alertas/comprobar/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/avisos/comprobar/route.ts": {
+      "maxDuration": 300
+    }
+  }
 }
