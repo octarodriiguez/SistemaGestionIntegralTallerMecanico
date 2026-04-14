@@ -80,11 +80,12 @@ export async function fetchEnargasLastOperationDate(
     await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => null);
     await page.waitForTimeout(1200);
     await page.waitForSelector("tbody tr", { timeout: 10000 }).catch(() => null);
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(2000);
 
-    // Use $$eval (multi-element) instead of $eval to avoid throwing when no cells found
-    const cellTexts: string[] = await page.$$eval("tbody tr td", (nodes: Element[]) =>
-      nodes.map((node: Element) => (node.textContent || "").trim()),
+    // The date is inside span.tablesaw-cell-content within each td, not directly in td text
+    const cellTexts: string[] = await page.$$eval(
+      "tbody tr td span.tablesaw-cell-content",
+      (nodes: Element[]) => nodes.map((node: Element) => (node as HTMLElement).innerText?.trim() ?? node.textContent?.trim() ?? ""),
     ).catch(() => []);
 
     const extractedFromCells = cellTexts.flatMap((value: string) => extractDateMatches(value));
@@ -93,42 +94,36 @@ export async function fetchEnargasLastOperationDate(
       .map((value: string) => ({ value, date: parseDateValue(value) }));
 
     if (parsedDates.length === 0) {
-      // Fallback: search only inside the results table, NOT the full body.
-      // The full body contains today's date in headers/footers which causes false positives.
-      const tableText = await page.$eval(
-        "table, #resultado, #resultados, .resultado, .table-responsive, tbody",
-        (node: Element) => (node.textContent || "").replace(/\s+/g, " ").trim(),
-      ).catch(() => "");
+      // Fallback: try td text content directly (in case tablesaw is not used)
+      const tdTexts: string[] = await page.$$eval(
+        "tbody tr td",
+        (nodes: Element[]) => nodes.map((node: Element) => (node as HTMLElement).innerText?.trim() ?? node.textContent?.trim() ?? ""),
+      ).catch(() => []);
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const tableDates = extractDateMatches(tableText)
+      const fallbackDates = tdTexts
+        .flatMap((value: string) => extractDateMatches(value))
+        .filter((value: string) => DATE_REGEX.test(value))
         .map((value: string) => ({ value, date: parseDateValue(value) }))
-        // Exclude today or future dates — those are page artifacts, not operation dates
-        .filter(({ date }) => date.getTime() < today.getTime())
         .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-      if (tableDates.length > 0) {
-        console.log(
-          `[ENARGAS] dominio=${normalizedDomain} fecha=${tableDates[0].value} fuente=table-fallback`,
-        );
+      if (fallbackDates.length > 0) {
+        console.log(`[ENARGAS] dominio=${normalizedDomain} fecha=${fallbackDates[0].value} fuente=td-fallback`);
         return {
           domain: normalizedDomain,
-          lastOperationDate: tableDates[0].value,
+          lastOperationDate: fallbackDates[0].value,
           source: "ENARGAS",
         };
       }
 
       const tableRowsText = await page.$$eval("tbody tr", (rows: Element[]) =>
         rows
-          .map((row: Element) => (row.textContent || "").replace(/\s+/g, " ").trim())
+          .map((row: Element) => (row as HTMLElement).innerText?.replace(/\s+/g, " ").trim() ?? "")
           .filter(Boolean)
           .slice(0, 6),
       ).catch(() => []);
 
       console.log(
-        `[ENARGAS] dominio=${normalizedDomain} fecha=NO_ENCONTRADA celdas=${cellTexts.length} filas=${tableRowsText.length}`,
+        `[ENARGAS] dominio=${normalizedDomain} fecha=NO_ENCONTRADA spans=${cellTexts.length} tds=${tdTexts.length}`,
       );
       if (tableRowsText.length > 0) {
         console.log(`[ENARGAS] dominio=${normalizedDomain} filasTexto=${JSON.stringify(tableRowsText)}`);
