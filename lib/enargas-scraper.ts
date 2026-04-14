@@ -82,6 +82,10 @@ export async function fetchEnargasLastOperationDate(
     await page.waitForSelector("tbody tr", { timeout: 10000 }).catch(() => null);
     await page.waitForTimeout(2000);
 
+    // Log raw HTML to diagnose what Playwright actually sees
+    const tbodyHtml = await page.$eval("tbody", (el: Element) => el.innerHTML).catch(() => "NO_TBODY");
+    console.log(`[ENARGAS] dominio=${normalizedDomain} tbodyHTML=${tbodyHtml.slice(0, 800)}`);
+
     // The date is inside span.tablesaw-cell-content within each td, not directly in td text
     const cellTexts: string[] = await page.$$eval(
       "tbody tr td span.tablesaw-cell-content",
