@@ -90,6 +90,7 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
   );
 
   const isReparacionVaria = selectedProcedureType?.code === "REPARACION_VARIA";
+  const isPh = selectedProcedureType?.code === "PRUEBA_HIDRAULICA";
   const hasFixedTotal = Boolean(
     selectedProcedureType?.code &&
       selectedProcedureType.code !== "REPARACION_VARIA" &&
@@ -99,6 +100,8 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
   function handleProcedureTypeChange(procedureTypeId: string) {
     const nextProcedure = procedureTypes.find((item) => item.id === procedureTypeId) ?? null;
     const fixed = typeof nextProcedure?.current_price === "number" ? nextProcedure.current_price : undefined;
+    const isPh = nextProcedure?.code === "PRUEBA_HIDRAULICA";
+    const tubes = isPh ? (Number(form.phTubes) || 1) : 1;
 
     setForm((prev) => ({
       ...prev,
@@ -106,11 +109,21 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
       distributorId: "",
       totalAmount:
         typeof fixed === "number"
-          ? String(fixed)
+          ? String(isPh ? fixed * tubes : fixed)
           : nextProcedure?.code === "REPARACION_VARIA"
             ? prev.totalAmount
             : "",
-      phTubes: nextProcedure?.code === "PRUEBA_HIDRAULICA" ? prev.phTubes : "",
+      phTubes: isPh ? prev.phTubes : "",
+    }));
+  }
+
+  function handlePhTubesChange(value: string) {
+    const tubes = Number(value) || 0;
+    const unitPrice = selectedProcedureType?.current_price ?? null;
+    setForm((prev) => ({
+      ...prev,
+      phTubes: value,
+      totalAmount: typeof unitPrice === "number" && tubes > 0 ? String(unitPrice * tubes) : prev.totalAmount,
     }));
   }
 
@@ -304,7 +317,7 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
               step="1"
               required
               value={form.phTubes}
-              onChange={(e) => setForm((prev) => ({ ...prev, phTubes: e.target.value }))}
+              onChange={(e) => handlePhTubesChange(e.target.value)}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
               placeholder="Cantidad de tubos"
             />
@@ -319,17 +332,7 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
             value={form.totalAmount}
             onChange={(e) => setForm((prev) => ({ ...prev, totalAmount: e.target.value }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none read-only:bg-slate-100 focus:border-slate-400"
-            placeholder="Total a pagar"
-          />
-
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={form.discountAmount}
-            onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
-            placeholder="Descuento (opcional)"
+            placeholder={isPh ? "Total (precio × tubos)" : "Total a pagar"}
           />
 
           <input
@@ -341,6 +344,16 @@ export function NewClientWithVehicleForm({ compact = false, onSuccess }: Props) 
             onChange={(e) => setForm((prev) => ({ ...prev, amountPaid: e.target.value }))}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
             placeholder="Monto abonado"
+          />
+
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={form.discountAmount}
+            onChange={(e) => setForm((prev) => ({ ...prev, discountAmount: e.target.value }))}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            placeholder="Descuento (opcional)"
           />
         </div>
       </div>

@@ -82,32 +82,40 @@ export async function fetchEnargasLastOperationDate(
     await page.waitForSelector("tbody tr", { timeout: 10000 }).catch(() => null);
     await page.waitForTimeout(700);
 
-    const dates: string[] = await page.$$eval("tbody tr td", (nodes: Element[]) =>
+    // Use $$eval (multi-element) instead of $eval to avoid throwing when no cells found
+    const cellTexts: string[] = await page.$$eval("tbody tr td", (nodes: Element[]) =>
       nodes.map((node: Element) => (node.textContent || "").trim()),
-    );
+    ).catch(() => []);
 
-    const extractedFromCells = dates.flatMap((value: string) => extractDateMatches(value));
+    const extractedFromCells = cellTexts.flatMap((value: string) => extractDateMatches(value));
     const parsedDates = extractedFromCells
-      .filter((value: string) => /^\d{2}\/\d{2}\/\d{4}$/.test(value))
-      .map((value: string) => ({ value, date: (() => {
-        const [d, m, y] = value.split("/");
-        return new Date(Number(y), Number(m) - 1, Number(d));
-      })() }));
+      .filter((value: string) => DATE_REGEX.test(value))
+      .map((value: string) => ({ value, date: parseDateValue(value) }));
 
     if (parsedDates.length === 0) {
-      const bodyText = await page.textContent("body").catch(() => "");
-      const fallbackMatches = extractDateMatches(bodyText || "");
-      const fallbackDates = fallbackMatches
+      // Fallback: search only inside the results table, NOT the full body.
+      // The full body contains today's date in headers/footers which causes false positives.
+      const tableText = await page.$eval(
+        "table, #resultado, #resultados, .resultado, .table-responsive, tbody",
+        (node: Element) => (node.textContent || "").replace(/\s+/g, " ").trim(),
+      ).catch(() => "");
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const tableDates = extractDateMatches(tableText)
         .map((value: string) => ({ value, date: parseDateValue(value) }))
+        // Exclude today or future dates — those are page artifacts, not operation dates
+        .filter(({ date }) => date.getTime() < today.getTime())
         .sort((a, b) => b.date.getTime() - a.date.getTime());
 
-      if (fallbackDates.length > 0) {
+      if (tableDates.length > 0) {
         console.log(
-          `[ENARGAS] dominio=${normalizedDomain} fecha=${fallbackDates[0].value} fuente=fallback`,
+          `[ENARGAS] dominio=${normalizedDomain} fecha=${tableDates[0].value} fuente=table-fallback`,
         );
         return {
           domain: normalizedDomain,
-          lastOperationDate: fallbackDates[0].value,
+          lastOperationDate: tableDates[0].value,
           source: "ENARGAS",
         };
       }
@@ -118,23 +126,12 @@ export async function fetchEnargasLastOperationDate(
           .filter(Boolean)
           .slice(0, 6),
       ).catch(() => []);
-      const visibleAlerts = await page.$$eval(
-        ".alert, .error, .mensaje, .message, #mensaje, #msg, .text-danger",
-        (nodes: Element[]) =>
-          nodes
-            .map((n: Element) => (n.textContent || "").replace(/\s+/g, " ").trim())
-            .filter(Boolean)
-            .slice(0, 6),
-      ).catch(() => []);
 
       console.log(
-        `[ENARGAS] dominio=${normalizedDomain} fecha=NO_ENCONTRADA celdas=${dates.length} filas=${tableRowsText.length} fallbackMatches=${fallbackMatches.length}`,
+        `[ENARGAS] dominio=${normalizedDomain} fecha=NO_ENCONTRADA celdas=${cellTexts.length} filas=${tableRowsText.length}`,
       );
       if (tableRowsText.length > 0) {
         console.log(`[ENARGAS] dominio=${normalizedDomain} filasTexto=${JSON.stringify(tableRowsText)}`);
-      }
-      if (visibleAlerts.length > 0) {
-        console.log(`[ENARGAS] dominio=${normalizedDomain} mensajes=${JSON.stringify(visibleAlerts)}`);
       }
       return {
         domain: normalizedDomain,
@@ -146,8 +143,8 @@ export async function fetchEnargasLastOperationDate(
     parsedDates.sort((a, b) => b.date.getTime() - a.date.getTime());
 
     console.log(
-        `[ENARGAS] dominio=${normalizedDomain} fecha=${parsedDates[0].value} coincidencias=${parsedDates.length}`,
-      );
+      `[ENARGAS] dominio=${normalizedDomain} fecha=${parsedDates[0].value} coincidencias=${parsedDates.length}`,
+    );
     return {
       domain: normalizedDomain,
       lastOperationDate: parsedDates[0].value,

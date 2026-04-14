@@ -80,7 +80,7 @@ type PurchaseFormProps = {
 };
 
 export function PurchaseForm({ onSubmit, onCancel, saving = false }: PurchaseFormProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD en zona local
   const [form, setForm] = useState<PurchaseFormValues>({
     transactionDate: today,
     description: "",
@@ -173,7 +173,7 @@ type PaymentFormProps = {
 };
 
 export function PaymentForm({ onSubmit, onCancel, saving = false }: PaymentFormProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD en zona local
   const [form, setForm] = useState<PaymentFormValues>({
     transactionDate: today,
     amount: "",

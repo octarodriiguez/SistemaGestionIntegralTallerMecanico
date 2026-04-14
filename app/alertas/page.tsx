@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BellRing,
   CheckCircle2,
@@ -196,6 +196,7 @@ export default function AlertasPage() {
   const [rows, setRows] = useState<AlertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningCheck, setRunningCheck] = useState(false);
+  const checkAbortRef = useRef<AbortController | null>(null);
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [monthFilter, setMonthFilter] = useState(currentMonthString());
@@ -320,11 +321,14 @@ export default function AlertasPage() {
   }, [deliveryRows]);
 
   async function runCheck() {
+    const controller = new AbortController();
+    checkAbortRef.current = controller;
     setRunningCheck(true);
     try {
       const res = await fetch("/api/avisos/comprobar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           q: search,
           month: activeMonth,
@@ -333,15 +337,29 @@ export default function AlertasPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "No se pudo comprobar.");
-      toast.success(
-        `Comprobacion terminada. Evaluados: ${json.data?.checked ?? 0} | Pendientes: ${json.data?.pending ?? 0}`,
-      );
+      if (json.data?.stopped) {
+        toast(`Consulta detenida. Evaluados: ${json.data?.checked ?? 0}`, { icon: "⏹️" });
+      } else {
+        toast.success(
+          `Comprobacion terminada. Evaluados: ${json.data?.checked ?? 0} | Pendientes: ${json.data?.pending ?? 0}`,
+        );
+      }
       await fetchAlerts({ page: 1 });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Error al comprobar.");
+      if ((error as any)?.name === "AbortError") {
+        toast(`Consulta detenida.`, { icon: "⏹️" });
+        await fetchAlerts({ page: 1 });
+      } else {
+        toast.error(error instanceof Error ? error.message : "Error al comprobar.");
+      }
     } finally {
+      checkAbortRef.current = null;
       setRunningCheck(false);
     }
+  }
+
+  function stopCheck() {
+    checkAbortRef.current?.abort();
   }
 
   async function handleAvisar(row: AlertRow) {
@@ -826,14 +844,26 @@ export default function AlertasPage() {
                   )}
                   <CardTitle className="text-2xl text-slate-900">Vencimientos</CardTitle>
                 </button>
-                <Button
-                  onClick={runCheck}
-                  disabled={runningCheck || !vencimientosOpen}
-                  className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
-                >
-                  <BellRing className="h-4 w-4" />
-                  {runningCheck ? "Comprobando..." : "Comprobar vencimientos"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {runningCheck && (
+                    <Button
+                      onClick={stopCheck}
+                      variant="outline"
+                      className="rounded-xl border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                    >
+                      <X className="h-4 w-4" />
+                      Detener
+                    </Button>
+                  )}
+                  <Button
+                    onClick={runCheck}
+                    disabled={runningCheck || !vencimientosOpen}
+                    className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+                  >
+                    <BellRing className="h-4 w-4" />
+                    {runningCheck ? "Comprobando..." : "Comprobar vencimientos"}
+                  </Button>
+                </div>
               </div>
             </CardHeader>
 

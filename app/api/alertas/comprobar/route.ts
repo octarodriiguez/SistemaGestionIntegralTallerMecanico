@@ -5,6 +5,11 @@ import {
   sameMonthYearFromStrings,
 } from "@/lib/enargas-scraper";
 
+// Vercel: extend function timeout (max 300s on Pro, 60s on Hobby)
+export const maxDuration = 300;
+// Use Node.js runtime — required for Playwright/Chromium
+export const runtime = "nodejs";
+
 const TARGET_CODES = ["RENOVACION_OBLEA", "PRUEBA_HIDRAULICA"];
 
 function extractDomainFromNotes(notes: string | null | undefined): string | null {
@@ -163,82 +168,106 @@ export async function POST(request: Request) {
       { lastOperationDate: string | null; error?: string }
     >();
 
-    // Limite de seguridad para no disparar scraping masivo accidental.
     const domainsToCheck = uniqueDomains.slice(0, 200);
+    let stopped = false;
+
     for (const domain of domainsToCheck) {
+      // Check if the client aborted the request
+      if (request.signal?.aborted) {
+        stopped = true;
+        console.log(`[ENARGAS] Consulta detenida por el usuario en dominio=${domain}`);
+        break;
+      }
+
       const result = await fetchEnargasLastOperationDate(domain);
       domainResultMap.set(domain, {
         lastOperationDate: result.lastOperationDate,
         error: result.error,
       });
+
+      if (request.signal?.aborted) {
+        stopped = true;
+        break;
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 350));
     }
 
-    const nowIso = new Date().toISOString();
-    const rows = procedureRows.map((item: any) => {
-      const selectedDomain = selectedDomainByProcedure.get(item.id) ?? null;
-      const domainResult = selectedDomain ? domainResultMap.get(selectedDomain) : undefined;
-      const enargasDate = domainResult?.lastOperationDate ?? null;
-      const matchesMonthYear = sameMonthYearFromStrings(enargasDate, item.created_at);
-      const previousStatus = existingStatusByProcedure.get(item.id);
+    // Only build rows for procedures whose domain was actually checked
+    const checkedDomains = new Set(domainResultMap.keys());
+    const rowsToUpsert = procedureRows
+      .filter((item: any) => {
+        const domain = selectedDomainByProcedure.get(item.id);
+        return domain ? checkedDomains.has(domain) : true;
+      })
+      .map((item: any) => {
+        const selectedDomain = selectedDomainByProcedure.get(item.id) ?? null;
+        const domainResult = selectedDomain ? domainResultMap.get(selectedDomain) : undefined;
+        const enargasDate = domainResult?.lastOperationDate ?? null;
+        const matchesMonthYear = sameMonthYearFromStrings(enargasDate, item.created_at);
+        const previousStatus = existingStatusByProcedure.get(item.id);
 
-      let status = matchesMonthYear
-        ? "PENDIENTE_DE_AVISAR"
-        : "NO_CORRESPONDE_AVISAR";
+        let status = matchesMonthYear ? "PENDIENTE_DE_AVISAR" : "NO_CORRESPONDE_AVISAR";
 
-      // Si ya fue avisado y sigue correspondiendo avisar, conservamos AVISADO.
-      if (matchesMonthYear && previousStatus === "AVISADO") {
-        status = "AVISADO";
+        // Si ya fue avisado y sigue correspondiendo avisar, conservamos AVISADO.
+        if (matchesMonthYear && previousStatus === "AVISADO") {
+          status = "AVISADO";
+        }
+
+        return {
+          procedure_id: item.id,
+          status,
+          enargas_last_operation_date: enargasDate
+            ? (() => {
+                const [d, m, y] = enargasDate.split("/");
+                return `${y}-${m}-${d}`;
+              })()
+            : null,
+          last_checked_at: new Date().toISOString(),
+          notes: domainResult?.error
+            ? `Error ENARGAS: ${domainResult.error}`
+            : selectedDomain
+              ? `Dominio consultado: ${selectedDomain}`
+              : "Sin dominio asociado",
+        };
+      });
+
+    if (rowsToUpsert.length > 0) {
+      const { error: upsertError } = await supabase
+        .from("procedure_alert_status")
+        .upsert(rowsToUpsert, { onConflict: "procedure_id" });
+
+      if (upsertError) {
+        console.error("POST /api/alertas/comprobar upsert error:", upsertError);
+        return NextResponse.json(
+          {
+            error:
+              "No se pudo guardar el estado de comprobacion. Ejecuta el SQL de alertas_status.",
+          },
+          { status: 500 },
+        );
       }
-
-      return {
-        procedure_id: item.id,
-        status,
-        enargas_last_operation_date: enargasDate
-          ? (() => {
-              const [d, m, y] = enargasDate.split("/");
-              return `${y}-${m}-${d}`;
-            })()
-          : null,
-        last_checked_at: nowIso,
-        notes: domainResult?.error
-          ? `Error ENARGAS: ${domainResult.error}`
-          : selectedDomain
-            ? `Dominio consultado: ${selectedDomain}`
-            : "Sin dominio asociado",
-      };
-    });
-
-    const { error: upsertError } = await supabase
-      .from("procedure_alert_status")
-      .upsert(rows, { onConflict: "procedure_id" });
-
-    if (upsertError) {
-      console.error("POST /api/alertas/comprobar upsert error:", upsertError);
-      return NextResponse.json(
-        {
-          error:
-            "No se pudo guardar el estado de comprobacion. Ejecuta el SQL de alertas_status.",
-        },
-        { status: 500 },
-      );
     }
 
-    const pending = rows.filter((item) => item.status === "PENDIENTE_DE_AVISAR").length;
-    const noCorrespond = rows.filter(
+    const pending = rowsToUpsert.filter((item) => item.status === "PENDIENTE_DE_AVISAR").length;
+    const noCorrespond = rowsToUpsert.filter(
       (item) => item.status === "NO_CORRESPONDE_AVISAR",
     ).length;
 
     return NextResponse.json({
       data: {
-        checked: rows.length,
+        checked: rowsToUpsert.length,
         pending,
         noCorrespond,
-        domainsChecked: domainsToCheck.length,
+        domainsChecked: domainResultMap.size,
         domainsSkippedByLimit: Math.max(uniqueDomains.length - domainsToCheck.length, 0),
+        stopped,
       },
     });
   } catch (error) {
+    if ((error as any)?.name === "AbortError") {
+      return NextResponse.json({ data: { checked: 0, stopped: true } });
+    }
     console.error("POST /api/alertas/comprobar error:", error);
     return NextResponse.json(
       { error: "No se pudo comprobar vencimientos." },
