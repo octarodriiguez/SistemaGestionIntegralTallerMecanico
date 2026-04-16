@@ -6,6 +6,7 @@ import {
   Settings,
   LayoutGrid,
   Users,
+  BarChart3,
 } from "lucide-react";
 
 export type AppRole = "OFICINA" | "MESA_ENTRADA";
@@ -45,6 +46,13 @@ export const appModules = [
     title: "Distribuidoras",
     description: "Cuenta corriente, compras, pagos y saldos pendientes.",
     icon: HandCoins,
+  },
+  {
+    key: "reportes",
+    href: "/reportes",
+    title: "Reportes",
+    description: "Estadísticas de trámites por mes, tipo y comparativas anuales.",
+    icon: BarChart3,
   },
   {
     key: "comprobantes",
