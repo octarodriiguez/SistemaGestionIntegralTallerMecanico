@@ -93,6 +93,80 @@ export async function GET(request: Request) {
     // --- Weekly breakdown for current month ---
     const now = new Date();
     const currentMonth = now.getMonth();
+
+    // --- Per-month detail (for month focus panel) ---
+    // For each month: weekly breakdown + by type + vs prev year same month
+    const monthDetails = MONTHS.map((name, mIdx) => {
+      const mCurrent = current.filter((p) => new Date(p.created_at).getMonth() === mIdx);
+      const mPrev    = prev.filter((p) => new Date(p.created_at).getMonth() === mIdx);
+
+      // Weekly with day ranges
+      const weeks = [1,2,3,4,5].map((w) => {
+        const dayFrom = (w - 1) * 7 + 1;
+        const dayTo   = Math.min(w * 7, 31);
+        const wCurrent = mCurrent.filter((p) => {
+          const d = new Date(p.created_at).getDate();
+          return Math.min(Math.ceil(d / 7), 5) === w;
+        }).length;
+        const wPrev = mPrev.filter((p) => {
+          const d = new Date(p.created_at).getDate();
+          return Math.min(Math.ceil(d / 7), 5) === w;
+        }).length;
+        return { week: `Sem ${w}`, label: `Sem ${w} (${dayFrom}–${dayTo})`, dayFrom, dayTo, current: wCurrent, prev: wPrev };
+      });
+
+      // Daily evolution for this month (current year)
+      const daysInMonth = new Date(yearParam, mIdx + 1, 0).getDate();
+      const dailyCurrent: number[] = Array(daysInMonth + 1).fill(0);
+      const dailyPrev:    number[] = Array(daysInMonth + 1).fill(0);
+      for (const p of mCurrent) {
+        const d = new Date(p.created_at).getDate();
+        if (d >= 1 && d <= daysInMonth) dailyCurrent[d]++;
+      }
+      for (const p of mPrev) {
+        const d = new Date(p.created_at).getDate();
+        if (d >= 1 && d <= daysInMonth) dailyPrev[d]++;
+      }
+      const dailyEvolution = Array.from({ length: daysInMonth }, (_, i) => ({
+        day: i + 1,
+        [String(yearParam)]: dailyCurrent[i + 1],
+        [String(compareYear)]: dailyPrev[i + 1],
+      }));
+
+      // By type with prev year
+      const byTypeCurrent: Record<string, number> = {};
+      const byTypePrev:    Record<string, number> = {};
+      for (const p of mCurrent) {
+        const label = typeLabel(p.procedure_type_id);
+        byTypeCurrent[label] = (byTypeCurrent[label] ?? 0) + 1;
+      }
+      for (const p of mPrev) {
+        const label = typeLabel(p.procedure_type_id);
+        byTypePrev[label] = (byTypePrev[label] ?? 0) + 1;
+      }
+      const allTypeNames = Array.from(new Set([...Object.keys(byTypeCurrent), ...Object.keys(byTypePrev)]));
+      const byTypeMonth = allTypeNames
+        .map((n) => ({ name: n, value: byTypeCurrent[n] ?? 0, valuePrev: byTypePrev[n] ?? 0 }))
+        .sort((a, b) => b.value - a.value);
+
+      const revenueCurrent = mCurrent.reduce((a, p) => a + Number(p.total_amount ?? 0), 0);
+      const collectedCurrent = mCurrent.reduce((a, p) => a + Number(p.amount_paid ?? 0), 0);
+      const revenuePrev = mPrev.reduce((a, p) => a + Number(p.total_amount ?? 0), 0);
+
+      return {
+        monthIdx: mIdx,
+        monthName: name,
+        totalCurrent: mCurrent.length,
+        totalPrev: mPrev.length,
+        revenueCurrent,
+        collectedCurrent,
+        revenuePrev,
+        weeks,
+        byType: byTypeMonth,
+        dailyEvolution,
+      };
+    });
+
     const currentMonthProcedures = current.filter(
       (p) => new Date(p.created_at).getMonth() === currentMonth,
     );
@@ -104,6 +178,7 @@ export async function GET(request: Request) {
     }
     const weekly = Object.entries(weeklyMap).map(([w, count]) => ({
       week: `Sem ${w}`,
+      label: `Sem ${w} (${(Number(w)-1)*7+1}–${Math.min(Number(w)*7,31)})`,
       count,
     }));
 
@@ -121,6 +196,7 @@ export async function GET(request: Request) {
     }
     const weeklyComparison = Object.entries(weeklyMap).map(([w, count]) => ({
       week: `Sem ${w}`,
+      label: `Sem ${w} (${(Number(w)-1)*7+1}–${Math.min(Number(w)*7,31)})`,
       current: count,
       prev: weeklyPrevMap[Number(w)] ?? 0,
     }));
@@ -215,6 +291,7 @@ export async function GET(request: Request) {
         weeklyComparison,
         currentMonthName: MONTHS[currentMonth],
         prevMonthName: MONTHS[prevMonthIdx],
+        monthDetails,
         // Financial
         financial: {
           summary: {

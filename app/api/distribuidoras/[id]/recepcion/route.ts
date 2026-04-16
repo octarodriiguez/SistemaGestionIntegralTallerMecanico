@@ -32,22 +32,13 @@ export async function GET(request: Request, context: any) {
       return NextResponse.json({ data: [] });
     }
 
-    // Get procedures linked to this distributor that are PENDIENTE_RECEPCION
-    // First get all pending delivery status IDs
-    const { data: pendingStatuses } = await supabase
-      .from("procedure_delivery_status")
-      .select("procedure_id")
-      .eq("status", "PENDIENTE_RECEPCION");
-
-    const pendingIds = (pendingStatuses ?? []).map((r: any) => r.procedure_id);
-
-    // Also include procedures with no delivery status row (they default to PENDIENTE_RECEPCION)
+    // Get all pending procedures of the target types (no distributor filter —
+    // the distributor here is who gets the purchase charge, not where the procedure came from)
     let query = supabase
       .from("client_procedures")
       .select(
         "id, created_at, notes, clients(id, first_name, last_name), procedure_types(id, code, display_name), vehicles:vehicles(brand, model, domain)",
       )
-      .eq("distributor_id", params?.id)
       .in("procedure_type_id", targetTypeIds)
       .order("created_at", { ascending: false });
 

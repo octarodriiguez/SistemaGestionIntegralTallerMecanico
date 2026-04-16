@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import {
@@ -26,10 +26,18 @@ type ReportData = {
   byType: { name: string; value: number }[];
   bestMonth: { name: string; count: number; idx: number } | null;
   worstMonth: { name: string; count: number; idx: number } | null;
-  weekly: { week: string; count: number }[];
-  weeklyComparison: { week: string; current: number; prev: number }[];
+  weekly: { week: string; label: string; count: number }[];
+  weeklyComparison: { week: string; label: string; current: number; prev: number }[];
   currentMonthName: string;
   prevMonthName: string;
+  monthDetails: {
+    monthIdx: number; monthName: string;
+    totalCurrent: number; totalPrev: number;
+    revenueCurrent: number; collectedCurrent: number; revenuePrev: number;
+    weeks: { week: string; label: string; dayFrom: number; dayTo: number; current: number; prev: number }[];
+    byType: { name: string; value: number; valuePrev: number }[];
+    dailyEvolution: { day: number; [key: string]: number }[];
+  }[];
   financial: {
     summary: {
       revenueCurrent: number;
@@ -90,17 +98,30 @@ function StatCard({
 }
 
 const currentYear = new Date().getFullYear();
+const AVAILABLE_YEARS = [currentYear, currentYear - 1, currentYear - 2];
+const YEAR_COLORS: Record<number, string> = {
+  [currentYear]:     "#0f172a",
+  [currentYear - 1]: "#3b82f6",
+  [currentYear - 2]: "#10b981",
+};
 
 export default function ReportesPage() {
-  const [year, setYear] = useState(currentYear);
+  const [selectedYears, setSelectedYears] = useState<number[]>([currentYear]);
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"operativo" | "financiero">("operativo");
+  const [focusMonth, setFocusMonth] = useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
-  async function fetchReport(y: number) {
+  // Primary year = most recent selected
+  const primaryYear = Math.max(...selectedYears);
+
+  async function fetchReport(years: number[]) {
+    if (years.length === 0) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/reportes?year=${y}`, { cache: "no-store" });
+      // Always fetch primary year; compareYear is always primaryYear - 1
+      const res = await fetch(`/api/reportes?year=${primaryYear}`, { cache: "no-store" });
       const json = await res.json();
       setData(json.data ?? null);
     } catch {
@@ -111,12 +132,44 @@ export default function ReportesPage() {
   }
 
   useEffect(() => {
-    fetchReport(year);
-  }, [year]);
+    fetchReport(selectedYears);
+    setFocusMonth(null);
+    setTypeFilter(null);
+  }, [selectedYears.join(",")]);
 
+  function toggleYear(y: number) {
+    setSelectedYears((prev) =>
+      prev.includes(y)
+        ? prev.length > 1 ? prev.filter((x) => x !== y) : prev
+        : [...prev, y].sort((a, b) => b - a),
+    );
+  }
+
+  const year = primaryYear;
   const growthPct = data?.summary?.growthPct ?? null;
-  const growthTrend =
-    growthPct === null ? "neutral" : growthPct > 0 ? "up" : growthPct < 0 ? "down" : "neutral";
+  const growthTrend = growthPct === null ? "neutral" : growthPct > 0 ? "up" : growthPct < 0 ? "down" : "neutral";
+
+  // All procedure types available in data
+  const allTypes = data ? Array.from(new Set(data.byType.map((t) => t.name))) : [];
+
+  const focusMonthData = focusMonth !== null ? data?.monthDetails?.[focusMonth] : null;
+  const filteredFocusByType = focusMonthData?.byType.filter((t) => !typeFilter || t.name === typeFilter) ?? [];
+
+  // Pie data: if month focused, use that month's type breakdown; otherwise full year
+  const pieData = focusMonthData
+    ? focusMonthData.byType.map((t) => ({ name: t.name, value: t.value }))
+    : (data?.byType ?? []);
+
+  // Monthly comparison: highlight focused month
+  const monthlyData = data?.monthlyComparison.map((row, i) => ({
+    ...row,
+    _focused: focusMonth === i,
+  })) ?? [];
+
+  // Current month daily evolution (for the bottom chart)
+  const now = new Date();
+  const currentMonthIdx = now.getMonth();
+  const dailyEvolutionData = data?.monthDetails?.[focusMonth ?? currentMonthIdx]?.dailyEvolution ?? [];
 
   return (
     <AppShell
@@ -126,7 +179,7 @@ export default function ReportesPage() {
     >
       <div className="space-y-6">
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
             {(["operativo", "financiero"] as const).map((t) => (
               <button key={t} type="button" onClick={() => setTab(t)}
@@ -137,18 +190,76 @@ export default function ReportesPage() {
               </button>
             ))}
           </div>
-          <label className="text-sm font-medium text-slate-700">Año</label>
-          <select
-            value={year}
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-          >
-            {[currentYear, currentYear - 1, currentYear - 2].map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
-          {loading && <span className="text-sm text-slate-400">Cargando...</span>}
+
+          {/* Year selector */}
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Años</span>
+            <div className="flex gap-1.5">
+              {AVAILABLE_YEARS.map((y) => {
+                const active = selectedYears.includes(y);
+                return (
+                  <button key={y} type="button" onClick={() => toggleYear(y)}
+                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold border transition ${
+                      active ? "text-white border-transparent" : "border-slate-200 text-slate-600 bg-white hover:border-slate-400"
+                    }`}
+                    style={active ? { background: YEAR_COLORS[y] } : {}}>
+                    {y}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Type filter */}
+          {allTypes.length > 1 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Tipo</span>
+              <div className="flex gap-1.5">
+                <button type="button" onClick={() => setTypeFilter(null)}
+                  className={`rounded-xl px-3 py-1.5 text-sm font-medium border transition ${
+                    !typeFilter ? "bg-slate-900 text-white border-slate-900" : "border-slate-200 text-slate-600 bg-white hover:border-slate-400"
+                  }`}>
+                  Todos
+                </button>
+                {allTypes.map((t) => (
+                  <button key={t} type="button" onClick={() => setTypeFilter(typeFilter === t ? null : t)}
+                    className={`rounded-xl px-3 py-1.5 text-sm font-medium border transition ${
+                      typeFilter === t ? "bg-slate-900 text-white border-slate-900" : "border-slate-200 text-slate-600 bg-white hover:border-slate-400"
+                    }`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loading && <span className="text-sm text-slate-400 self-end pb-1">Cargando...</span>}
         </div>
+
+        {/* Active filter pills */}
+        {(focusMonth !== null || typeFilter !== null) && data && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">Filtros activos:</span>
+            {focusMonth !== null && (
+              <button type="button" onClick={() => setFocusMonth(null)}
+                className="flex items-center gap-1.5 rounded-full bg-slate-900 text-white text-xs px-3 py-1 hover:bg-slate-700">
+                {data.monthDetails[focusMonth].monthName} {year}
+                <span className="opacity-60">✕</span>
+              </button>
+            )}
+            {typeFilter !== null && (
+              <button type="button" onClick={() => setTypeFilter(null)}
+                className="flex items-center gap-1.5 rounded-full bg-slate-600 text-white text-xs px-3 py-1 hover:bg-slate-500">
+                {typeFilter}
+                <span className="opacity-60">✕</span>
+              </button>
+            )}
+            <button type="button" onClick={() => { setFocusMonth(null); setTypeFilter(null); }}
+              className="text-xs text-slate-400 hover:text-slate-700 underline underline-offset-2">
+              Limpiar todo
+            </button>
+          </div>
+        )}
 
         {data && !loading && (
           <>
@@ -189,33 +300,157 @@ export default function ReportesPage() {
             <Card className="rounded-2xl border-slate-200">
               <CardHeader>
                 <CardTitle className="text-lg text-slate-900">
-                  Trámites por mes — {year} vs {data.compareYear}
+                  Trámites por mes — {selectedYears.join(", ")}
+                  <span className="ml-2 text-sm font-normal text-slate-400">Click en un mes para ver detalle</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={data.monthlyComparison} barGap={4}>
+                  <BarChart
+                    data={monthlyData}
+                    barGap={4}
+                    onClick={(e) => {
+                      const idx = typeof e?.activeTooltipIndex === "number" ? e.activeTooltipIndex : null;
+                      if (idx !== null) setFocusMonth((prev) => prev === idx ? null : idx);
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#64748b" }} />
                     <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }}
-                    />
+                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }} />
                     <Legend wrapperStyle={{ fontSize: 13 }} />
-                    <Bar dataKey={String(year)} fill="#0f172a" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey={String(data.compareYear)} fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+                    {selectedYears.map((y) => (
+                      <Bar key={y} dataKey={String(y)} radius={[4,4,0,0]}>
+                        {monthlyData.map((entry, i) => (
+                          <Cell
+                            key={i}
+                            fill={entry._focused
+                              ? (YEAR_COLORS[y] ?? "#0f172a")
+                              : focusMonth !== null
+                                ? `${YEAR_COLORS[y] ?? "#0f172a"}55`
+                                : (YEAR_COLORS[y] ?? "#0f172a")}
+                          />
+                        ))}
+                      </Bar>
+                    ))}
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
+            {/* Month focus panel */}
+            {focusMonth !== null && focusMonthData && (() => {
+              const md = focusMonthData;
+              const totalCurrent = typeFilter
+                ? (filteredFocusByType.find((t) => t.name === typeFilter)?.value ?? 0)
+                : md.totalCurrent;
+              const totalPrev = typeFilter
+                ? (filteredFocusByType.find((t) => t.name === typeFilter)?.valuePrev ?? 0)
+                : md.totalPrev;
+              const delta = totalCurrent - totalPrev;
+              return (
+                <Card className="rounded-2xl border-slate-900 bg-slate-900 text-white">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-xl text-white">
+                        {md.monthName} {year}{typeFilter ? ` — ${typeFilter}` : ""} vs {data.compareYear}
+                      </CardTitle>
+                      <button type="button" onClick={() => setFocusMonth(null)}
+                        className="text-slate-400 hover:text-white text-sm">x cerrar</button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {[
+                        { label: `Tramites ${year}`, value: totalCurrent },
+                        { label: `Tramites ${data.compareYear}`, value: totalPrev },
+                        { label: "Variacion", value: delta === 0 ? "-" : `${delta > 0 ? "+" : ""}${delta}`, color: delta > 0 ? "text-emerald-400" : delta < 0 ? "text-rose-400" : "text-slate-400" },
+                        { label: `Facturado ${year}`, value: `$${formatCurrency(md.revenueCurrent)}` },
+                      ].map((item) => (
+                        <div key={item.label} className="rounded-xl bg-slate-800 p-3">
+                          <p className="text-xs text-slate-400 uppercase tracking-wide">{item.label}</p>
+                          <p className={`text-2xl font-bold mt-1 ${"color" in item ? item.color : "text-white"}`}>{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-300 mb-2">Evolucion diaria</p>
+                      <ResponsiveContainer width="100%" height={160}>
+                        <BarChart data={md.dailyEvolution} barGap={2}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                          <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} interval={4} />
+                          <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} allowDecimals={false} />
+                          <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #334155", background: "#1e293b", fontSize: 12, color: "#f1f5f9" }} />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Bar dataKey={String(year)} fill={YEAR_COLORS[year] ?? "#0f172a"} radius={[2,2,0,0]} />
+                          <Bar dataKey={String(data.compareYear)} fill="#475569" radius={[2,2,0,0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-300 mb-2">Semanas</p>
+                      <div className="rounded-xl overflow-hidden border border-slate-700">
+                        <table className="w-full text-sm">
+                          <thead className="bg-slate-800 text-slate-400">
+                            <tr>
+                              <th className="px-4 py-2 text-left font-medium">Semana</th>
+                              <th className="px-4 py-2 text-right font-medium">{year}</th>
+                              <th className="px-4 py-2 text-right font-medium">{data.compareYear}</th>
+                              <th className="px-4 py-2 text-right font-medium">D</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {md.weeks.map((w) => {
+                              const d = w.current - w.prev;
+                              return (
+                                <tr key={w.week} className="border-t border-slate-700">
+                                  <td className="px-4 py-2 text-slate-200">
+                                    {w.week}
+                                    <span className="ml-2 text-xs text-slate-500">({w.dayFrom}-{w.dayTo})</span>
+                                  </td>
+                                  <td className="px-4 py-2 text-right font-semibold text-white">{w.current}</td>
+                                  <td className="px-4 py-2 text-right text-slate-400">{w.prev}</td>
+                                  <td className={`px-4 py-2 text-right font-semibold ${d > 0 ? "text-emerald-400" : d < 0 ? "text-rose-400" : "text-slate-500"}`}>
+                                    {d > 0 ? `+${d}` : d === 0 ? "-" : d}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    {md.byType.length > 0 && (
+                      <div>
+                        <p className="text-sm font-semibold text-slate-300 mb-2">Por tipo (click para filtrar)</p>
+                        <div className="flex flex-wrap gap-2">
+                          {md.byType.map((item) => (
+                            <div key={item.name}
+                              onClick={() => setTypeFilter(typeFilter === item.name ? null : item.name)}
+                              className={`rounded-xl px-4 py-2 flex items-center gap-3 cursor-pointer transition ${
+                                typeFilter === item.name ? "bg-white/20 ring-1 ring-white/40" : "bg-slate-800 hover:bg-slate-700"
+                              }`}>
+                              <span className="text-slate-300 text-sm">{item.name}</span>
+                              <span className="text-white font-bold text-lg">{item.value}</span>
+                              <span className="text-slate-400 text-sm">vs {item.valuePrev}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
             {/* By type + weekly side by side */}
             <div className="grid gap-4 lg:grid-cols-2">
               {/* By type pie */}
               <Card className="rounded-2xl border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-lg text-slate-900">
-                    Por tipo de trámite — {year}
+                    Por tipo{focusMonth !== null ? ` — ${data.monthDetails[focusMonth].monthName}` : ` — ${year}`}
+                    <span className="ml-2 text-sm font-normal text-slate-400">Click para filtrar</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -223,103 +458,98 @@ export default function ReportesPage() {
                     <ResponsiveContainer width="100%" height={200}>
                       <PieChart>
                         <Pie
-                          data={data.byType}
+                          data={pieData}
                           cx="50%"
                           cy="50%"
                           innerRadius={55}
                           outerRadius={85}
                           paddingAngle={3}
                           dataKey="value"
+                          style={{ cursor: "pointer" }}
+                          onClick={(entry) => {
+                            const name = entry?.name as string | undefined;
+                            if (name) setTypeFilter((prev) => prev === name ? null : name);
+                          }}
                         >
-                          {data.byType.map((_, i) => (
-                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                          {pieData.map((item, i) => (
+                            <Cell
+                              key={i}
+                              fill={PIE_COLORS[i % PIE_COLORS.length]}
+                              opacity={typeFilter && typeFilter !== item.name ? 0.3 : 1}
+                              stroke={typeFilter === item.name ? "#fff" : "none"}
+                              strokeWidth={typeFilter === item.name ? 2 : 0}
+                            />
                           ))}
                         </Pie>
-                        <Tooltip
-                          contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }}
-                        />
+                        <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }} />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="space-y-2 min-w-[100px]">
-                      {data.byType.map((item, i) => (
-                        <div key={item.name} className="flex items-center gap-2 text-sm">
-                          <span
-                            className="h-3 w-3 rounded-full flex-shrink-0"
-                            style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
-                          />
+                      {pieData.map((item, i) => (
+                        <button
+                          key={item.name}
+                          type="button"
+                          onClick={() => setTypeFilter((prev) => prev === item.name ? null : item.name)}
+                          className={`flex w-full items-center gap-2 text-sm rounded-lg px-2 py-1 transition ${
+                            typeFilter === item.name ? "bg-slate-100 font-semibold" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <span className="h-3 w-3 rounded-full flex-shrink-0"
+                            style={{ background: PIE_COLORS[i % PIE_COLORS.length], opacity: typeFilter && typeFilter !== item.name ? 0.3 : 1 }} />
                           <span className="text-slate-700">{item.name}</span>
                           <span className="ml-auto font-semibold text-slate-900">{item.value}</span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Weekly comparison current vs prev month */}
+              {/* Weekly comparison: focused month vs same month prev year */}
               <Card className="rounded-2xl border-slate-200">
                 <CardHeader>
                   <CardTitle className="text-lg text-slate-900">
-                    Semanas — {data.currentMonthName} vs {data.prevMonthName}
+                    {focusMonth !== null
+                      ? `Semanas — ${data.monthDetails[focusMonth].monthName} ${year} vs ${data.compareYear}`
+                      : `Semanas — ${data.currentMonthName} ${year} vs ${data.compareYear}`}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={data.weeklyComparison} barGap={4}>
+                    <BarChart
+                      data={(focusMonth !== null ? data.monthDetails[focusMonth] : data.monthDetails[new Date().getMonth()]).weeks}
+                      barGap={4}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="week" tick={{ fontSize: 12, fill: "#64748b" }} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#64748b" }} />
                       <YAxis tick={{ fontSize: 12, fill: "#64748b" }} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }}
-                      />
+                      <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }} />
                       <Legend wrapperStyle={{ fontSize: 13 }} />
-                      <Bar dataKey="current" name={data.currentMonthName} fill="#0f172a" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="prev" name={data.prevMonthName} fill="#cbd5e1" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="current" name={String(year)} fill="#0f172a" radius={[4,4,0,0]} />
+                      <Bar dataKey="prev" name={String(data.compareYear)} fill="#64748b" radius={[4,4,0,0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Revenue line chart */}
+            {/* Daily evolution — line chart connecting days */}
             <Card className="rounded-2xl border-slate-200">
               <CardHeader>
                 <CardTitle className="text-lg text-slate-900">
-                  Facturación mensual — {year} vs {data.compareYear}
+                  Evolucion diaria — {focusMonth !== null ? data.monthDetails[focusMonth].monthName : data.currentMonthName} {year} vs {data.compareYear}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={data.monthlyComparison}>
+                  <LineChart data={dailyEvolutionData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#64748b" }} />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: "#64748b" }}
-                      tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
-                    />
-                    <Tooltip
-                      contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }}
-                      formatter={(v: any) => [`$${formatCurrency(v)}`, ""]}
-                    />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "#64748b" }} interval={4} />
+                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0", fontSize: 13 }} />
                     <Legend wrapperStyle={{ fontSize: 13 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="revenue"
-                      name={String(year)}
-                      stroke="#0f172a"
-                      strokeWidth={2}
-                      dot={{ r: 4, fill: "#0f172a" }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="revenuePrev"
-                      name={String(data.compareYear)}
-                      stroke="#94a3b8"
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      dot={{ r: 3, fill: "#94a3b8" }}
-                    />
+                    <Line type="monotone" dataKey={String(year)} stroke={YEAR_COLORS[year] ?? "#0f172a"} strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey={String(data.compareYear)} stroke="#64748b" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 2 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
