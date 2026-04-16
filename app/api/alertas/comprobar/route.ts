@@ -45,6 +45,10 @@ export async function POST(request: Request) {
     const month = (body?.month ?? "").toString().trim();
     const showAll = body?.all === true;
     const searchMode = q.length > 0;
+    // If specific procedure IDs are passed, only check those (page-scoped mode)
+    const scopedIds: string[] | null = Array.isArray(body?.procedureIds) && body.procedureIds.length > 0
+      ? body.procedureIds
+      : null;
 
     const { data: procedureTypes } = await supabase
       .from("procedure_types")
@@ -56,70 +60,72 @@ export async function POST(request: Request) {
       return NextResponse.json({ data: { checked: 0 } });
     }
 
-    let clientIdsByVehicle: string[] = [];
-    let clientIdsByClientData: string[] = [];
-    if (q) {
-      const { data: matchedVehicles } = await supabase
-        .from("vehicles")
-        .select("client_id")
-        .or(`domain.ilike.%${q}%,brand.ilike.%${q}%,model.ilike.%${q}%`)
-        .limit(1200);
-      clientIdsByVehicle = Array.from(
-        new Set((matchedVehicles ?? []).map((row) => row.client_id)),
-      );
+    let procedureRows: any[] = [];
 
-      const { data: matchedClients } = await supabase
-        .from("clients")
-        .select("id")
-        .or(
-          `first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%`,
-        )
-        .limit(1200);
-      clientIdsByClientData = Array.from(
-        new Set((matchedClients ?? []).map((row) => row.id)),
-      );
-    }
+    if (scopedIds) {
+      // Page-scoped: fetch only the specific procedures visible on screen
+      const { data: scopedProcedures, error: scopedError } = await supabase
+        .from("client_procedures")
+        .select("id, client_id, created_at, notes")
+        .in("id", scopedIds);
+      if (scopedError) {
+        return NextResponse.json({ error: "No se pudo comprobar vencimientos." }, { status: 500 });
+      }
+      procedureRows = scopedProcedures ?? [];
+    } else {
+      let clientIdsByVehicle: string[] = [];
+      let clientIdsByClientData: string[] = [];
+      if (q) {
+        const { data: matchedVehicles } = await supabase
+          .from("vehicles")
+          .select("client_id")
+          .or(`domain.ilike.%${q}%,brand.ilike.%${q}%,model.ilike.%${q}%`)
+          .limit(1200);
+        clientIdsByVehicle = Array.from(
+          new Set((matchedVehicles ?? []).map((row) => row.client_id)),
+        );
 
-    let query = supabase
-      .from("client_procedures")
-      .select("id, client_id, created_at, notes")
-      .in("procedure_type_id", targetProcedureTypeIds)
-      .order("created_at", { ascending: false });
+        const { data: matchedClients } = await supabase
+          .from("clients")
+          .select("id")
+          .or(`first_name.ilike.%${q}%,last_name.ilike.%${q}%,phone.ilike.%${q}%`)
+          .limit(1200);
+        clientIdsByClientData = Array.from(
+          new Set((matchedClients ?? []).map((row) => row.id)),
+        );
+      }
 
-    if (!showAll && !searchMode) {
-      if (month) {
-        const range = getMonthRange(month);
-        if (range) {
-          query = query.gte("created_at", range.start).lt("created_at", range.end);
-        }
-      } else if (date) {
-        const range = getMonthRange(date);
-        if (range) {
-          query = query.gte("created_at", range.start).lt("created_at", range.end);
+      let query = supabase
+        .from("client_procedures")
+        .select("id, client_id, created_at, notes")
+        .in("procedure_type_id", targetProcedureTypeIds)
+        .order("created_at", { ascending: false });
+
+      if (!showAll && !searchMode) {
+        if (month) {
+          const range = getMonthRange(month);
+          if (range) query = query.gte("created_at", range.start).lt("created_at", range.end);
+        } else if (date) {
+          const range = getMonthRange(date);
+          if (range) query = query.gte("created_at", range.start).lt("created_at", range.end);
         }
       }
-    }
 
-    if (q) {
-      const allClientIds = Array.from(
-        new Set([...clientIdsByVehicle, ...clientIdsByClientData]),
-      );
-      if (allClientIds.length === 0) {
-        return NextResponse.json({ data: { checked: 0 } });
+      if (q) {
+        const allClientIds = Array.from(new Set([...clientIdsByVehicle, ...clientIdsByClientData]));
+        if (allClientIds.length === 0) {
+          return NextResponse.json({ data: { checked: 0 } });
+        }
+        query = query.in("client_id", allClientIds);
       }
-      query = query.in("client_id", allClientIds);
-    }
 
-    const { data: procedures, error } = await query.limit(1200);
-    if (error) {
-      console.error("POST /api/alertas/comprobar error:", error);
-      return NextResponse.json(
-        { error: "No se pudo comprobar vencimientos." },
-        { status: 500 },
-      );
+      const { data: procedures, error } = await query.limit(1200);
+      if (error) {
+        console.error("POST /api/alertas/comprobar error:", error);
+        return NextResponse.json({ error: "No se pudo comprobar vencimientos." }, { status: 500 });
+      }
+      procedureRows = procedures ?? [];
     }
-
-    const procedureRows = procedures ?? [];
     if (procedureRows.length === 0) {
       return NextResponse.json({ data: { checked: 0, pending: 0, noCorrespond: 0 } });
     }

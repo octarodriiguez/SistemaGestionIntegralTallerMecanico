@@ -130,6 +130,71 @@ export async function GET(request: Request) {
     const totalPrev = prev.length;
     const revenueCurrent = current.reduce((acc, p) => acc + Number(p.total_amount ?? 0), 0);
     const revenuePrev = prev.reduce((acc, p) => acc + Number(p.total_amount ?? 0), 0);
+    const collectedCurrent = current.reduce((acc, p) => acc + Number(p.amount_paid ?? 0), 0);
+    const pendingCurrent = Math.max(revenueCurrent - collectedCurrent, 0);
+
+    // --- Financial: monthly cobrado/pendiente ---
+    const byMonthFinancial = MONTHS.map((name, i) => ({
+      month: name,
+      facturado: byMonth[i].revenue,
+      facturadoPrev: byMonthPrev[i].revenue,
+      cobrado: 0,
+      pendiente: 0,
+    }));
+    for (const p of current) {
+      const m = new Date(p.created_at).getMonth();
+      byMonthFinancial[m].cobrado   += Number(p.amount_paid ?? 0);
+      byMonthFinancial[m].pendiente += Math.max(Number(p.total_amount ?? 0) - Number(p.amount_paid ?? 0), 0);
+    }
+
+    // --- Financial: revenue by type ---
+    const revenueByType: Record<string, { count: number; revenue: number; collected: number }> = {};
+    for (const p of current) {
+      const label = typeLabel(p.procedure_type_id);
+      if (!revenueByType[label]) revenueByType[label] = { count: 0, revenue: 0, collected: 0 };
+      revenueByType[label].count++;
+      revenueByType[label].revenue   += Number(p.total_amount ?? 0);
+      revenueByType[label].collected += Number(p.amount_paid ?? 0);
+    }
+    const revenueByTypeArr = Object.entries(revenueByType)
+      .map(([name, v]) => ({ name, count: v.count, revenue: v.revenue, collected: v.collected, pending: v.revenue - v.collected }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // --- Financial: distributor balances ---
+    const [distributorsResult, txResult] = await Promise.all([
+      supabase.from("distributors").select("id, name"),
+      supabase.from("distributor_transactions").select("id, distributor_id, type, amount, transaction_date"),
+    ]);
+    const distributors = distributorsResult.data ?? [];
+    const allTx        = txResult.data ?? [];
+
+    const distBalances = distributors.map((d: any) => {
+      const txs     = allTx.filter((t: any) => t.distributor_id === d.id);
+      const balance = txs.reduce((acc: number, t: any) =>
+        t.type === "PURCHASE" ? acc + Number(t.amount ?? 0) : acc - Number(t.amount ?? 0), 0);
+      const purchasesThisYear = txs
+        .filter((t: any) => t.type === "PURCHASE" && new Date(t.transaction_date).getFullYear() === yearParam)
+        .reduce((acc: number, t: any) => acc + Number(t.amount ?? 0), 0);
+      return { id: d.id, name: d.name, balance, purchasesThisYear };
+    }).sort((a: any, b: any) => b.balance - a.balance);
+
+    const totalDistDebt   = distBalances.filter((d: any) => d.balance > 0).reduce((a: number, d: any) => a + d.balance, 0);
+    const totalDistCredit = distBalances.filter((d: any) => d.balance < 0).reduce((a: number, d: any) => a + Math.abs(d.balance), 0);
+
+    // --- Financial: margin by month ---
+    const purchasesByMonth = MONTHS.map(() => 0);
+    for (const t of allTx) {
+      if (t.type !== "PURCHASE") continue;
+      const d = new Date(t.transaction_date);
+      if (d.getFullYear() !== yearParam) continue;
+      purchasesByMonth[d.getMonth()] += Number(t.amount ?? 0);
+    }
+    const marginByMonth = MONTHS.map((name, i) => ({
+      month:     name,
+      facturado: byMonth[i].revenue,
+      compras:   purchasesByMonth[i],
+      margen:    byMonth[i].revenue - purchasesByMonth[i],
+    }));
 
     return NextResponse.json({
       data: {
@@ -150,6 +215,22 @@ export async function GET(request: Request) {
         weeklyComparison,
         currentMonthName: MONTHS[currentMonth],
         prevMonthName: MONTHS[prevMonthIdx],
+        // Financial
+        financial: {
+          summary: {
+            revenueCurrent,
+            collectedCurrent,
+            pendingCurrent,
+            revenuePrev,
+            revenueGrowthPct: revenuePrev > 0 ? Math.round(((revenueCurrent - revenuePrev) / revenuePrev) * 100) : null,
+            totalDistDebt,
+            totalDistCredit,
+          },
+          byMonthFinancial,
+          revenueByTypeArr,
+          distBalances,
+          marginByMonth,
+        },
       },
     });
   } catch (error) {

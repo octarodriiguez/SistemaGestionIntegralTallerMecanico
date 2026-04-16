@@ -320,20 +320,23 @@ export default function AlertasPage() {
     );
   }, [deliveryRows]);
 
-  async function runCheck() {
+  async function runCheck(scopedProcedureIds?: string[]) {
     const controller = new AbortController();
     checkAbortRef.current = controller;
     setRunningCheck(true);
     try {
+      const body: Record<string, any> = {
+        q: search,
+        month: activeMonth,
+        all: showAll,
+      };
+      if (scopedProcedureIds) body.procedureIds = scopedProcedureIds;
+
       const res = await fetch("/api/avisos/comprobar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({
-          q: search,
-          month: activeMonth,
-          all: showAll,
-        }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "No se pudo comprobar.");
@@ -856,12 +859,21 @@ export default function AlertasPage() {
                     </Button>
                   )}
                   <Button
-                    onClick={runCheck}
+                    onClick={() => runCheck(rows.map((r) => r.id))}
+                    disabled={runningCheck || !vencimientosOpen || rows.length === 0}
+                    variant="outline"
+                    className="rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50"
+                  >
+                    <BellRing className="h-4 w-4" />
+                    {`Comprobar página (${rows.length})`}
+                  </Button>
+                  <Button
+                    onClick={() => runCheck()}
                     disabled={runningCheck || !vencimientosOpen}
                     className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
                   >
                     <BellRing className="h-4 w-4" />
-                    {runningCheck ? "Comprobando..." : "Comprobar vencimientos"}
+                    {runningCheck ? "Comprobando..." : "Comprobar todo el mes"}
                   </Button>
                 </div>
               </div>
