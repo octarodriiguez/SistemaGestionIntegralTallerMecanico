@@ -47,15 +47,18 @@ async function launchBrowser(): Promise<BrowserInstance> {
     });
   }
 
+  // Local: use real Chrome (visible) to bypass reCAPTCHA
   const { chromium } = await import("playwright");
   return chromium.launch({
-    headless: true,
+    headless: false,
+    channel: "chrome",   // uses the real installed Chrome with its profile/cookies
     args: [
-      "--disable-blink-features=AutomationControlled",
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
+      "--disable-blink-features=AutomationControlled",
     ],
+    slowMo: 100, // slight delay so the page JS has time to register events
   });
 }
 
@@ -75,16 +78,37 @@ export async function fetchEnargasLastOperationDate(
     await page.goto(ENARGAS_URL, { waitUntil: "domcontentloaded", timeout: 40000 });
 
     await page.waitForSelector("#dominio", { timeout: 12000 });
+    await page.click("#dominio");
     await page.fill("#dominio", normalizedDomain);
+    // Dispatch the same events the working browser script uses
+    await page.evaluate((domain: string) => {
+      const campo = document.getElementById("dominio") as HTMLInputElement;
+      if (!campo) return;
+      campo.value = domain;
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+      campo.dispatchEvent(new Event("keyup", { bubbles: true }));
+      campo.dispatchEvent(new Event("change", { bubbles: true }));
+    }, normalizedDomain);
+    await page.waitForTimeout(300);
     await page.click("#consulta-op");
     await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => null);
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(2000);
     await page.waitForSelector("tbody tr", { timeout: 10000 }).catch(() => null);
     await page.waitForTimeout(2000);
 
     // Log raw HTML to diagnose what Playwright actually sees
     const tbodyHtml = await page.$eval("tbody", (el: Element) => el.innerHTML).catch(() => "NO_TBODY");
     console.log(`[ENARGAS] dominio=${normalizedDomain} tbodyHTML=${tbodyHtml.slice(0, 800)}`);
+
+    // Log full page HTML to see what's actually there
+    const allTables = await page.$$eval("table", (els: Element[]) => els.map(el => el.outerHTML.slice(0, 200))).catch(() => []);
+    console.log(`[ENARGAS] dominio=${normalizedDomain} tables=${JSON.stringify(allTables)}`);
+    const pageTitle = await page.title().catch(() => "");
+    const pageUrl = page.url();
+    console.log(`[ENARGAS] dominio=${normalizedDomain} url=${pageUrl} title=${pageTitle}`);
+    // Dump visible text of the whole page (first 1000 chars)
+    const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 1000) ?? "NO_BODY").catch(() => "ERR");
+    console.log(`[ENARGAS] dominio=${normalizedDomain} bodyText=${bodyText}`);
 
     // The date is inside span.tablesaw-cell-content within each td, not directly in td text
     const cellTexts: string[] = await page.$$eval(

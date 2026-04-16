@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CreditCard, FileText, Plus, ShoppingBag } from "lucide-react";
+import { Building2, CreditCard, FileText, Package, Plus, ShoppingBag } from "lucide-react";
 import toast from "react-hot-toast";
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import {
   PaymentForm,
   PurchaseForm,
 } from "@/components/modules/distribuidoras/forms";
+import { RecepcionModal } from "@/components/modules/distribuidoras/recepcion-modal";
 
 type TransactionRow = {
   id: string;
@@ -52,6 +53,7 @@ export default function DistribuidorasPage() {
   const [openNewModal, setOpenNewModal] = useState(false);
   const [openPurchaseModal, setOpenPurchaseModal] = useState(false);
   const [openPaymentModal, setOpenPaymentModal] = useState(false);
+  const [openRecepcionModal, setOpenRecepcionModal] = useState(false);
   const [selectedDistributor, setSelectedDistributor] = useState<DistributorRow | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -183,6 +185,11 @@ export default function DistribuidorasPage() {
     setOpenPaymentModal(true);
   }
 
+  function openRecepcionFor(row: DistributorRow) {
+    setSelectedDistributor(row);
+    setOpenRecepcionModal(true);
+  }
+
   return (
     <AppShell
       sectionLabel="Modulo"
@@ -275,6 +282,14 @@ export default function DistribuidorasPage() {
                     </Link>
                     <Button
                       variant="outline"
+                      className="border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                      onClick={() => openRecepcionFor(row)}
+                    >
+                      <Package className="h-4 w-4" />
+                      Recibir mercadería
+                    </Button>
+                    <Button
+                      variant="outline"
                       className="border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                       onClick={() => openPurchaseFor(row)}
                     >
@@ -296,6 +311,18 @@ export default function DistribuidorasPage() {
           </div>
         )}
       </div>
+
+      {openRecepcionModal && selectedDistributor ? (
+        <RecepcionModal
+          distributorId={selectedDistributor.id}
+          distributorName={selectedDistributor.name}
+          onClose={() => setOpenRecepcionModal(false)}
+          onSuccess={async () => {
+            setOpenRecepcionModal(false);
+            await fetchDistributors();
+          }}
+        />
+      ) : null}
 
       {openNewModal ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/40 p-2 pt-16">
